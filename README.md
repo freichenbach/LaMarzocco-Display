@@ -153,6 +153,13 @@ This restores the previous behaviour, in which any certificate is accepted and t
 connection can be intercepted. Use it only to get a device working again, not as a
 permanent setting.
 
+## Continuous Integration
+
+Every push and pull request builds the firmware and the filesystem image through
+`.github/workflows/build.yml`, and uploads both as artifacts. This catches build
+breakage without a device attached; anything touching the display, the access
+point or the cloud connection still needs to be tried on real hardware.
+
 ## Contributing
 
 **Developers wanted!** We're looking for contributors to help improve this project. Whether you're interested in:

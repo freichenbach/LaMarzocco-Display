@@ -1,0 +1,52 @@
+name: Build
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  firmware:
+    name: Firmware and filesystem image
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # The ESP32 toolchain is a few hundred MB and does not change between runs.
+      - name: Cache PlatformIO toolchains
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
+          restore-keys: ${{ runner.os }}-platformio-
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Build firmware
+        run: pio run -e T-Display-AMOLED
+
+      # Catches a data/ directory that outgrew the SPIFFS partition, which would
+      # otherwise only show up when flashing the device.
+      - name: Build filesystem image
+        run: pio run -e T-Display-AMOLED --target buildfs
+
+      - name: Report sizes
+        run: |
+          ls -l .pio/build/T-Display-AMOLED/firmware.bin \
+                .pio/build/T-Display-AMOLED/spiffs.bin
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: |
+            .pio/build/T-Display-AMOLED/firmware.bin
+            .pio/build/T-Display-AMOLED/spiffs.bin
+          if-no-files-found: error
