@@ -92,15 +92,28 @@ The device provides a web interface for configuration. After connecting to your 
 ### TLS certificate verification
 
 Connections to the La Marzocco cloud (REST API and WebSocket) verify the server
-certificate against a set of public root CAs embedded in `src/lamarzocco_tls.cpp`,
-and the hostname is checked as well. Because certificate dates are part of that
-check, the firmware waits for an NTP sync (`TIME_SYNC_TIMEOUT_MS` in
-`include/config.h`) before the first request.
+certificate against the root CAs embedded in `src/lamarzocco_tls.cpp`, and the
+hostname is checked as well. Because certificate dates are part of that check,
+the firmware waits for an NTP sync (`TIME_SYNC_TIMEOUT_MS` in `include/config.h`)
+before the first request.
 
-If La Marzocco switches to a certificate authority that is not in that list, the
-handshake fails and the device can no longer reach the cloud. The fix is to add
-the new root certificate to `src/lamarzocco_tls.cpp` in PEM form. As an emergency
-fallback you can build with verification disabled:
+`lion.lamarzocco.io` is served from AWS, so the store contains the four Amazon
+roots and nothing else. Certificates from any other public CA are rejected, which
+is the point of the check. The leaf certificate and the AWS Certificate Manager
+intermediate below the root rotate on their own and are not pinned.
+
+You can check the chain your device will see with:
+
+```bash
+openssl s_client -showcerts -servername lion.lamarzocco.io \
+  -connect lion.lamarzocco.io:443 </dev/null 2>/dev/null \
+  | grep -E "^ *[0-9]+ (s|i):"
+```
+
+If La Marzocco ever moves off AWS, the handshake fails and the device can no
+longer reach the cloud. The fix is to add the new provider's root certificate to
+`src/lamarzocco_tls.cpp` in PEM form. As an emergency fallback you can build with
+verification disabled:
 
 ```ini
 build_flags =
