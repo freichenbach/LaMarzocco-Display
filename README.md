@@ -81,6 +81,10 @@ This project is designed for the [LilyGo T-Display S3 AMOLED](https://lilygo.cc/
      and applies the settings; if you leave without confirming, it applies them
      on its own once nothing is connected to the portal any more.
 
+> If the configuration pages show an error about a missing web interface, or the
+> serial monitor reports `SPIFFS mount failed`, step 6 was skipped - the firmware
+> and the web interface are flashed separately.
+
 ### Monitoring Serial Output
 
 To view debug output and monitor the device:

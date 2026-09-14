@@ -24,17 +24,35 @@ struct CaseInsensitiveCompare
     }
 };
 
+static bool fs_mounted = false;
+
+// Shown instead of a blank page when the filesystem image was never flashed.
+// The regular logging here is compiled out in release builds, so without this
+// the portal would just answer with nothing and look like broken hardware.
+static void sendMissingFilesystemPage(const String &path)
+{
+    Serial.printf("[FS] %s is not available in SPIFFS\n", path.c_str());
+    server.send(500, "text/html",
+                "<h2>Web interface not installed</h2>"
+                "<p>The filesystem image is missing from this device. Flash it with"
+                " <code>pio run --target uploadfs</code> and restart.</p>");
+}
+
 void initFS(void)
 {
-    SPIFFS.begin();
+    fs_mounted = SPIFFS.begin();
+    if (!fs_mounted) {
+        Serial.println("[FS] SPIFFS mount failed - the web interface will not be available.");
+        Serial.println("[FS] Flash the filesystem image with: pio run --target uploadfs");
+    }
 }
 
 void streamFile(String path)
 {
-    File file = SPIFFS.open(path, "r");
+    File file = fs_mounted ? SPIFFS.open(path, "r") : File();
     if (!file)
     {
-        log_i("%s file not found!", path.c_str());
+        sendMissingFilesystemPage(path);
         return;
     }
     server.streamFile(file, "text/html");
@@ -49,7 +67,14 @@ void handleNotFound(void)
 
 void cssHandler(void)
 {
-    File CSSfile = SPIFFS.open("/styles.css", "r");
+    File CSSfile = fs_mounted ? SPIFFS.open("/styles.css", "r") : File();
+    if (!CSSfile)
+    {
+        // The pages stay readable without styling, so answer empty rather than
+        // with the error page, which would end up inside a <link> tag.
+        server.send(404, "text/css", "");
+        return;
+    }
     server.streamFile(CSSfile, "text/css");
     CSSfile.close();
 }
