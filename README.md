@@ -89,6 +89,29 @@ The device provides a web interface for configuration. After connecting to your 
 - La Marzocco account information
 - Display preferences
 
+### TLS certificate verification
+
+Connections to the La Marzocco cloud (REST API and WebSocket) verify the server
+certificate against a set of public root CAs embedded in `src/lamarzocco_tls.cpp`,
+and the hostname is checked as well. Because certificate dates are part of that
+check, the firmware waits for an NTP sync (`TIME_SYNC_TIMEOUT_MS` in
+`include/config.h`) before the first request.
+
+If La Marzocco switches to a certificate authority that is not in that list, the
+handshake fails and the device can no longer reach the cloud. The fix is to add
+the new root certificate to `src/lamarzocco_tls.cpp` in PEM form. As an emergency
+fallback you can build with verification disabled:
+
+```ini
+build_flags =
+    ${env.build_flags}
+    -D LM_TLS_INSECURE
+```
+
+This restores the previous behaviour, in which any certificate is accepted and the
+connection can be intercepted. Use it only to get a device working again, not as a
+permanent setting.
+
 ## Contributing
 
 **Developers wanted!** We're looking for contributors to help improve this project. Whether you're interested in:

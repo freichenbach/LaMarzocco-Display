@@ -1,14 +1,30 @@
 #include "lamarzocco_client.h"
 #include "config.h"
+#include "lamarzocco_tls.h"
 #include <time.h>
 
 static const char* BASE_URL = "lion.lamarzocco.io";
 static const char* CUSTOMER_APP_URL = "https://lion.lamarzocco.io/api/customer-app";
 static const unsigned long TOKEN_TIME_TO_REFRESH = 10 * 60;  // 10 minutes
 
+// HTTPClient returns a negative code when the request never reached the server,
+// which is also what a rejected server certificate looks like. The regular error
+// paths use debug() and are compiled out in release builds, so report this case
+// unconditionally - otherwise a trust store mismatch would fail silently.
+static void log_connection_failure(const char* what, int http_code)
+{
+    if (http_code >= 0) {
+        return;
+    }
+    Serial.printf("[TLS] %s could not connect: %s (%d)\n",
+                  what, HTTPClient::errorToString(http_code).c_str(), http_code);
+    Serial.println("[TLS] If this persists, the server certificate may no longer chain "
+                   "to a root in src/lamarzocco_tls.cpp");
+}
+
 LaMarzoccoClient::LaMarzoccoClient(Preferences& prefs) 
     : _prefs(prefs), _initialized(false) {
-    _client.setInsecure();  // For now, accept self-signed certs
+    lm_tls_apply(_client);  // Verify the cloud certificate against the bundled roots
 }
 
 LaMarzoccoClient::~LaMarzoccoClient() {
@@ -67,6 +83,7 @@ bool LaMarzoccoClient::register_client() {
         debugln("Registration successful");
         return true;
     } else {
+        log_connection_failure("Registration", http_code);
         debug("Registration failed: ");
         debugln(http_code);
         debugln(response);
@@ -110,6 +127,7 @@ bool LaMarzoccoClient::_sign_in() {
         debugln("Sign in successful");
         return true;
     } else {
+        log_connection_failure("Sign in", http_code);
         debug("Sign in failed: ");
         debugln(http_code);
         debugln(response);
@@ -158,6 +176,7 @@ bool LaMarzoccoClient::_refresh_token() {
         debugln("Token refresh successful");
         return true;
     } else {
+        log_connection_failure("Token refresh", http_code);
         debug("Token refresh failed: ");
         debugln(http_code);
         return _sign_in();  // Fallback to sign in
@@ -239,6 +258,7 @@ bool LaMarzoccoClient::api_call(const String& method, const String& endpoint, Js
         }
         return true;
     } else {
+        log_connection_failure("API call", http_code);
         debug("API call failed: ");
         debugln(http_code);
         debugln(response_str);

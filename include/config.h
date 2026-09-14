@@ -26,6 +26,9 @@ static constexpr const char *NTP_SERVER = "pool.ntp.org";
 #define DISPLAY_BRIGHTNESS_DIM  30
 #define DISPLAY_ROTATION  2
 
+// Time to wait for the NTP sync that TLS certificate validation depends on
+#define TIME_SYNC_TIMEOUT_MS  (15UL * 1000UL)
+
 #define uS_TO_S_FACTOR 1000000ULL
 
 #endif

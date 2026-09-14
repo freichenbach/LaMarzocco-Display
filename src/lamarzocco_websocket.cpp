@@ -1,4 +1,5 @@
 #include "lamarzocco_websocket.h"
+#include "lamarzocco_tls.h"
 #include "config.h"
 #include <ArduinoJson.h>
 #include <esp_random.h>
@@ -441,8 +442,13 @@ bool LaMarzoccoWebSocket::connect(const String& serial_number) {
         return false;
     }
     
-    // Connect to websocket (beginSSL handles SSL automatically)
-    _ws.beginSSL(WS_BASE_URL, 443, "/ws/connect");
+    // Connect to websocket (the SSL handshake is handled by the library)
+    const char* ca_store = lm_tls_ca_store();
+    if (ca_store) {
+        _ws.beginSslWithCA(WS_BASE_URL, 443, "/ws/connect", ca_store);
+    } else {
+        _ws.beginSSL(WS_BASE_URL, 443, "/ws/connect");
+    }
     
     debugln("✓ Connection initiated, waiting for handshake...");
     
