@@ -3,8 +3,13 @@
 #include <DNSServer.h>
 #include <ESPmDNS.h>
 #include <esp_heap_caps.h>
+#include <esp_random.h>
+#include "Preferences.h"
 #include "config.h"
+#include "web.h"
 #include "web_handle.h"
+
+extern Preferences preferences;
 
 uint64_t timer = 0;
 
@@ -13,10 +18,51 @@ const byte DNS_PORT = 53;
 DNSServer dnsServer;
 WebServer server(80);
 
+static String ap_password;
+static volatile bool portal_config_changed = false;
+
+void portal_mark_config_changed(void)
+{
+    portal_config_changed = true;
+}
+
+String getApPassword(void)
+{
+    // Cached after the first call, which happens while the access point is
+    // started. The setup screen can therefore read the key without touching
+    // NVS from the LVGL task.
+    if (ap_password.length() >= 8) {
+        return ap_password;
+    }
+
+    ap_password = preferences.getString("AP_PASS", "");
+    if (ap_password.length() < 8) {
+        // The key is read off the display, so leave out characters that are
+        // easy to confuse: 0/O, 1/l/i.
+        static const char alphabet[] = "23456789abcdefghjkmnpqrstuvwxyz";
+        const size_t alphabet_len = sizeof(alphabet) - 1;
+
+        ap_password = "";
+        for (int i = 0; i < AP_PASSWORD_LENGTH; i++) {
+            ap_password += alphabet[esp_random() % alphabet_len];
+        }
+        preferences.putString("AP_PASS", ap_password);
+    }
+
+    return ap_password;
+}
+
 void setupAP()
 {
     log_i("Configuring access point...");
-    WiFi.softAP(AP_SSID);
+
+    // WPA2 instead of an open network: the portal carries the WiFi password and
+    // the La Marzocco credentials, and an open access point offers no link layer
+    // encryption at all, so anything in range could read them off the air.
+    String password = getApPassword();
+    WiFi.softAP(AP_SSID, password.c_str());
+    Serial.print("[AP] SSID: " AP_SSID "  Key: ");
+    Serial.println(password);
     WiFi.setSleep(false);
     delay(100);
     dnsServer.start(DNS_PORT, "*", WiFi.softAPIP());
@@ -29,11 +75,25 @@ void setupAP()
 
 void webTask(void *args)
 {
+    unsigned long last_station_ms = millis();
 
     while (1)
     {
         dnsServer.processNextRequest();
         server.handleClient();
+
+        // Settings only take effect after a restart, which the status page asks
+        // the user to trigger. If they saved something and simply walked away,
+        // apply it once nobody is connected to the portal any more.
+        if (WiFi.softAPgetStationNum() > 0) {
+            last_station_ms = millis();
+        } else if (portal_config_changed &&
+                   (millis() - last_station_ms) >= AP_PORTAL_TIMEOUT_MS) {
+            Serial.println("[AP] Portal idle, restarting to apply the saved configuration");
+            delay(100);
+            ESP.restart();
+        }
+
         vTaskDelay(10); // allow the cpu to switch to other tasks
     }
     vTaskDelete(NULL);

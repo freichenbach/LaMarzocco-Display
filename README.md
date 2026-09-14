@@ -71,8 +71,15 @@ This project is designed for the [LilyGo T-Display S3 AMOLED](https://lilygo.cc/
    Or click the "Upload Filesystem Image" button in the PlatformIO toolbar in VS Code.
    
 7. **Configure WiFi and La Marzocco credentials**
-   - After first boot, the device will create a WiFi access point
+   - After first boot, the device will create a WiFi access point named `shottimer`
+   - The access point is WPA2 protected. The device generates its own key on first
+     boot and shows it on the setup screen, below the network name and the URL
+     (the key is also printed to the serial monitor). It stays the same across
+     reboots.
    - Connect to the AP and configure your WiFi credentials and La Marzocco account details via the web interface
+   - Press **Confirm** on the status page when you are done. The device restarts
+     and applies the settings; if you leave without confirming, it applies them
+     on its own once nothing is connected to the portal any more.
 
 ### Monitoring Serial Output
 
@@ -88,6 +95,23 @@ The device provides a web interface for configuration. After connecting to your 
 - WiFi credentials
 - La Marzocco account information
 - Display preferences
+
+### Setup access point
+
+The configuration portal carries your WiFi password and your La Marzocco account
+password, so the access point serving it uses WPA2 rather than being open: on an
+open network there is no link layer encryption and anything in range can read
+those forms off the air.
+
+The key is generated per device from the hardware RNG, stored in NVS and shown on
+the setup screen. `AP_PASSWORD_LENGTH` and `AP_PORTAL_TIMEOUT_MS` in
+`include/config.h` control its length and how long the portal waits before
+applying saved settings by itself.
+
+Note that the portal is plain HTTP inside that WPA2 network. TLS would need a
+self-signed certificate, which browsers warn about and which an attacker on the
+same network can trivially substitute, and it would break the captive portal
+redirect - so the link layer is the useful place to encrypt here.
 
 ### TLS certificate verification
 

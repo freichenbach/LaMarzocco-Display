@@ -6,6 +6,7 @@
 #include "config.h"
 #include "Preferences.h"
 #include "lamarzocco_auth.h"
+#include "web.h"
 #include <set>
 
 extern Preferences preferences;
@@ -81,12 +82,30 @@ void sendSSID(void)
     server.send(200, "application/json", jsonString);
 }
 
+// The status page only needs to show what is configured, not the values
+// themselves. Anyone who reaches the portal can read this, so keep the account
+// name and the machine serial recognisable but incomplete.
+static String maskEmail(const String &email)
+{
+    int at = email.indexOf('@');
+    if (email.length() == 0) return "N/A";
+    if (at <= 0) return "***";
+    return email.substring(0, 1) + "***" + email.substring(at);
+}
+
+static String maskSerial(const String &serial)
+{
+    if (serial.length() == 0) return "N/A";
+    if (serial.length() <= 4) return "***";
+    return "***" + serial.substring(serial.length() - 4);
+}
+
 void sendStatus(void)
 {
     JsonDocument jsonDoc;
     jsonDoc["wifi"] = preferences.getString("SSID", "N/A");
-    jsonDoc["email"] = preferences.getString("USER_EMAIL", "N/A");
-    jsonDoc["machine"] = preferences.getString("MACHINE", "N/A");
+    jsonDoc["email"] = maskEmail(preferences.getString("USER_EMAIL", ""));
+    jsonDoc["machine"] = maskSerial(preferences.getString("MACHINE", ""));
     String jsonString;
     serializeJson(jsonDoc, jsonString);
     server.send(200, "application/json", jsonString);
@@ -99,6 +118,7 @@ void saveWifiHandler(void)
         ssid = server.arg("manual_ssid");
     preferences.putString("SSID", ssid);
     preferences.putString("PASS", server.arg("password"));
+    portal_mark_config_changed();
     streamFile("/credential.html");
 }
 
@@ -106,12 +126,14 @@ void saveCloudHandler(void)
 {
     preferences.putString("USER_EMAIL", server.arg("user_email"));
     preferences.putString("USER_PASS", server.arg("user_pass"));
+    portal_mark_config_changed();
     streamFile("/machine.html");
 }
 
 void saveMachineHandler(void)
 {
     preferences.putString("MACHINE", server.arg("machine"));
+    portal_mark_config_changed();
     
     // Generate installation key if not exists
     InstallationKey key;

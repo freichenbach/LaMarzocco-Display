@@ -26,6 +26,11 @@ static constexpr const char *NTP_SERVER = "pool.ntp.org";
 #define DISPLAY_BRIGHTNESS_DIM  30
 #define DISPLAY_ROTATION  2
 
+// Setup access point: length of the generated WPA2 key and how long the portal
+// keeps running with nobody connected before saved settings are applied
+#define AP_PASSWORD_LENGTH  10
+#define AP_PORTAL_TIMEOUT_MS  (15UL * 60UL * 1000UL)
+
 // Time to wait for the NTP sync that TLS certificate validation depends on
 #define TIME_SYNC_TIMEOUT_MS  (15UL * 1000UL)
 
