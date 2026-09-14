@@ -136,28 +136,50 @@ void sendStatus(void)
     server.send(200, "application/json", jsonString);
 }
 
+// Nothing limits the size of a submitted field, and an over-long value makes
+// putString() fail without telling anyone - the setting then silently stays at
+// its old value. Limits follow the protocols: 32 for an SSID, 63 for a WPA
+// passphrase, 254 for an e-mail address.
+static bool storeField(const char *key, const String &value, size_t max_len)
+{
+    if (value.length() > max_len) {
+        Serial.printf("[WEB] %s rejected: %u characters, at most %u allowed\n",
+                      key, (unsigned)value.length(), (unsigned)max_len);
+        server.send(400, "text/html",
+                    "<h2>Value too long</h2>"
+                    "<p>One of the submitted values exceeds the allowed length."
+                    " Please go back and correct it.</p>");
+        return false;
+    }
+    preferences.putString(key, value);
+    return true;
+}
+
 void saveWifiHandler(void)
 {
     String ssid = server.arg("ssid");
     if (ssid == "OTHERS")
         ssid = server.arg("manual_ssid");
-    preferences.putString("SSID", ssid);
-    preferences.putString("PASS", server.arg("password"));
+
+    if (!storeField("SSID", ssid, 32)) return;
+    if (!storeField("PASS", server.arg("password"), 63)) return;
+
     portal_mark_config_changed();
     streamFile("/credential.html");
 }
 
 void saveCloudHandler(void)
 {
-    preferences.putString("USER_EMAIL", server.arg("user_email"));
-    preferences.putString("USER_PASS", server.arg("user_pass"));
+    if (!storeField("USER_EMAIL", server.arg("user_email"), 254)) return;
+    if (!storeField("USER_PASS", server.arg("user_pass"), 128)) return;
+
     portal_mark_config_changed();
     streamFile("/machine.html");
 }
 
 void saveMachineHandler(void)
 {
-    preferences.putString("MACHINE", server.arg("machine"));
+    if (!storeField("MACHINE", server.arg("machine"), 32)) return;
     portal_mark_config_changed();
     
     // Generate installation key if not exists
