@@ -3,3 +3,7 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# Serial monitor captures / debug logs (can contain machine serials and credentials)
+output.txt
+*.log
