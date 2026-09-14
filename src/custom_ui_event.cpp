@@ -27,6 +27,14 @@ void wifiSetup(lv_event_t *e)
     lv_label_set_text(ui_APKeyLabel, key_text.c_str());
     lv_obj_align_to(ui_APKeyLabel, ui_URLLabel, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 2);
 
+    // The screen shows the network to connect to, so the access point has to be
+    // running. It is not when WiFi was lost after startup: setupWEB() is only
+    // called from setup(). Hand the request to the main loop, which can create
+    // the tasks and sockets that setupWEB() needs.
+    if (!isPortalRunning()) {
+        requestPortalStart();
+    }
+
     lv_scr_load(ui_setupWifiScreen);
 }
 

@@ -20,17 +20,39 @@ WebServer server(80);
 
 static String ap_password;
 static volatile bool portal_config_changed = false;
+static volatile bool portal_running = false;
+static volatile bool portal_start_requested = false;
 
 void portal_mark_config_changed(void)
 {
     portal_config_changed = true;
 }
 
+bool isPortalRunning(void)
+{
+    return portal_running;
+}
+
+void requestPortalStart(void)
+{
+    portal_start_requested = true;
+}
+
+void servicePortalRequest(void)
+{
+    if (!portal_start_requested || portal_running) {
+        return;
+    }
+    portal_start_requested = false;
+    Serial.println("[AP] Setup portal requested, starting access point");
+    setupWEB();
+}
+
 String getApPassword(void)
 {
-    // Cached after the first call, which happens while the access point is
-    // started. The setup screen can therefore read the key without touching
-    // NVS from the LVGL task.
+    // Cached after the first call. That call usually happens while the access
+    // point is started, but the setup screen may ask for the key first, so this
+    // has to work from the LVGL task as well - NVS does its own locking.
     if (ap_password.length() >= 8) {
         return ap_password;
     }
@@ -101,6 +123,11 @@ void webTask(void *args)
 
 void setupWEB(void)
 {
+    if (portal_running) {
+        debugln("Setup portal already running");
+        return;
+    }
+
     setupAP();
     initFS();
 
@@ -122,6 +149,8 @@ void setupWEB(void)
     server.begin();
     log_i("HTTP server started");
     timer = millis();
+
+    portal_running = true;
 
     TaskHandle_t t1;
     //changed this as per Gemini as it could be causing the web server crash.

@@ -292,6 +292,7 @@ void setup()
 
 void loop()
 {
+  servicePortalRequest();  // starts the setup portal when the UI asked for it
   updateDateTime();
   updateStatusImages();  // Update battery and WiFi images (initial + every 30 seconds)
   checkWiFiConnection(); // Monitor WiFi connection and redirect if disconnected
