@@ -112,6 +112,18 @@ the setup screen. `AP_PASSWORD_LENGTH` and `AP_PORTAL_TIMEOUT_MS` in
 `include/config.h` control its length and how long the portal waits before
 applying saved settings by itself.
 
+### Brewing simulation
+
+Pulling GPIO 15 low fakes a brewing cycle on the display, which is useful when
+working on the UI without a machine. It is off unless the build defines
+`BREWING_SIM_ENABLED`, so nothing else wired to that pin can trigger it:
+
+```ini
+build_flags =
+    ${env.build_flags}
+    -D BREWING_SIM_ENABLED
+```
+
 Note that the portal is plain HTTP inside that WPA2 network. TLS would need a
 self-signed certificate, which browsers warn about and which an attacker on the
 same network can trivially substitute, and it would break the captive portal
