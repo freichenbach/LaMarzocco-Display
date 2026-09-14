@@ -135,15 +135,14 @@ bool lm_tls_wait_for_clock(uint32_t timeout_ms)
     // Certificates carry notBefore/notAfter dates, so an unset clock (which
     // starts at 1970) makes every certificate look invalid. Wait for the NTP
     // sync that configTime() kicked off before the first TLS handshake.
-    const time_t MIN_VALID_EPOCH = 1700000000;  // 2023-11-14, well before any build
     unsigned long start = millis();
 
     while (millis() - start < timeout_ms) {
-        if (time(nullptr) >= MIN_VALID_EPOCH) {
+        if (time(nullptr) >= LM_MIN_VALID_EPOCH) {
             return true;
         }
         delay(100);
     }
 
-    return time(nullptr) >= MIN_VALID_EPOCH;
+    return time(nullptr) >= LM_MIN_VALID_EPOCH;
 }

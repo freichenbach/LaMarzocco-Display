@@ -2,6 +2,12 @@
 
 #include <Arduino.h>
 #include <WiFiClientSecure.h>
+#include <time.h>
+
+// Anything below this is not a real date but an unset clock: the ESP32 starts
+// counting at 1970 and NTP has not answered yet. 2023-11-14, well before any
+// build of this firmware.
+static const time_t LM_MIN_VALID_EPOCH = 1700000000;
 
 // Trust store used for all TLS connections to the La Marzocco cloud
 // (REST API and WebSocket). See src/lamarzocco_tls.cpp for the contents.

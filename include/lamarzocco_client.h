@@ -10,10 +10,12 @@
 struct AccessToken {
     String access_token;
     String refresh_token;
-    unsigned long expires_at;  // Unix timestamp in seconds
-    
-    bool isValid() const {
-        return access_token.length() > 0 && expires_at > (unsigned long)(millis() / 1000);
+    time_t expires_at = 0;  // Unix timestamp in seconds, 0 when it could not be anchored
+
+    // "now" is passed in rather than read here, so callers cannot accidentally
+    // compare this Unix timestamp against a different time base.
+    bool isValid(time_t now) const {
+        return access_token.length() > 0 && expires_at > now;
     }
 };
 
@@ -59,7 +61,6 @@ private:
     // Internal helpers
     bool _sign_in();
     bool _refresh_token();
-    bool _make_request(const String& method, const String& url, JsonDocument* request_body, JsonDocument* response_body, bool needs_auth);
     void _add_auth_headers(HTTPClient& http);
 };
 

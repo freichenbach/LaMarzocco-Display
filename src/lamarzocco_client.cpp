@@ -7,6 +7,15 @@ static const char* BASE_URL = "lion.lamarzocco.io";
 static const char* CUSTOMER_APP_URL = "https://lion.lamarzocco.io/api/customer-app";
 static const unsigned long TOKEN_TIME_TO_REFRESH = 10 * 60;  // 10 minutes
 
+// Unix time, or 0 while the clock has not been set yet. Token expiry used to be
+// compared against millis()/1000 in some places and against Unix time in others,
+// which meant an expired token could look valid whenever NTP had not answered.
+static time_t current_epoch()
+{
+    time_t now = time(nullptr);
+    return (now >= LM_MIN_VALID_EPOCH) ? now : 0;
+}
+
 // HTTPClient returns a negative code when the request never reached the server,
 // which is also what a rejected server certificate looks like. The regular error
 // paths use debug() and are compiled out in release builds, so report this case
@@ -115,14 +124,11 @@ bool LaMarzoccoClient::_sign_in() {
         _access_token.access_token = response_doc["accessToken"].as<String>();
         _access_token.refresh_token = response_doc["refreshToken"].as<String>();
         
-        // Parse expires_at (assuming it's in the response, adjust as needed)
         unsigned long expires_in = response_doc["expiresIn"].as<unsigned long>();
-        struct tm timeinfo;
-        if (getLocalTime(&timeinfo)) {
-            _access_token.expires_at = mktime(&timeinfo) + expires_in;
-        } else {
-            _access_token.expires_at = (millis() / 1000) + expires_in;
-        }
+        time_t now = current_epoch();
+        // Leaving this at 0 when the clock is unset makes the next call fetch a
+        // fresh token rather than trust an expiry it cannot place in time.
+        _access_token.expires_at = now ? (now + (time_t)expires_in) : 0;
         
         debugln("Sign in successful");
         return true;
@@ -166,12 +172,10 @@ bool LaMarzoccoClient::_refresh_token() {
         }
         
         unsigned long expires_in = response_doc["expiresIn"].as<unsigned long>();
-        struct tm timeinfo;
-        if (getLocalTime(&timeinfo)) {
-            _access_token.expires_at = mktime(&timeinfo) + expires_in;
-        } else {
-            _access_token.expires_at = (millis() / 1000) + expires_in;
-        }
+        time_t now = current_epoch();
+        // Leaving this at 0 when the clock is unset makes the next call fetch a
+        // fresh token rather than trust an expiry it cannot place in time.
+        _access_token.expires_at = now ? (now + (time_t)expires_in) : 0;
         
         debugln("Token refresh successful");
         return true;
@@ -188,23 +192,24 @@ bool LaMarzoccoClient::get_access_token() {
         return false;
     }
     
-    struct tm timeinfo;
-    unsigned long now = 0;
-    if (getLocalTime(&timeinfo)) {
-        now = mktime(&timeinfo);
-    } else {
-        now = millis() / 1000;
+    time_t now = current_epoch();
+    if (now == 0) {
+        // The clock is not set, so nothing can be said about expiry. Use the
+        // token we have instead of signing in on every call - the TLS handshake
+        // needs the clock as well and will fail loudly if it is really unset.
+        return _access_token.access_token.length() > 0 ? true : _sign_in();
     }
-    
-    if (!_access_token.isValid() || _access_token.expires_at < now + TOKEN_TIME_TO_REFRESH) {
-        if (_access_token.refresh_token.length() > 0 && _access_token.expires_at > now) {
-            return _refresh_token();
-        } else {
-            return _sign_in();
-        }
+
+    if (_access_token.isValid(now) &&
+        _access_token.expires_at >= now + (time_t)TOKEN_TIME_TO_REFRESH) {
+        return true;
     }
-    
-    return true;
+
+    if (_access_token.refresh_token.length() > 0 && _access_token.expires_at > now) {
+        return _refresh_token();
+    }
+
+    return _sign_in();
 }
 
 void LaMarzoccoClient::_add_auth_headers(HTTPClient& http) {
@@ -218,51 +223,66 @@ void LaMarzoccoClient::_add_auth_headers(HTTPClient& http) {
 }
 
 bool LaMarzoccoClient::api_call(const String& method, const String& endpoint, JsonDocument* request_body, JsonDocument* response_body) {
-    if (!get_access_token()) {
-        return false;
-    }
-    
     String url = String(CUSTOMER_APP_URL) + endpoint;
-    
-    HTTPClient http;
-    http.begin(_client, url);
-    http.addHeader("Content-Type", "application/json");
-    _add_auth_headers(http);
-    http.addHeader("Authorization", "Bearer " + _access_token.access_token);
-    
+
     String request_str;
     if (request_body) {
         serializeJson(*request_body, request_str);
     }
-    
-    int http_code = 0;
-    if (method == "GET") {
-        http_code = http.GET();
-    } else if (method == "POST") {
-        http_code = http.POST(request_str);
-    } else if (method == "PUT") {
-        http_code = http.PUT(request_str);
-    } else if (method == "DELETE") {
-        http_code = http.sendRequest("DELETE", request_str);
-    } else {
-        http.end();
-        return false;
-    }
-    
-    String response_str = http.getString();
-    http.end();
-    
-    if (http_code >= 200 && http_code < 300) {
-        if (response_body && response_str.length() > 0) {
-            deserializeJson(*response_body, response_str);
+
+    // Two attempts: a token can be rejected even though it still looked current
+    // here, for instance after it was revoked server side. Without the retry a
+    // single 401 fails the call and the caller sees it as a lost connection.
+    for (int attempt = 0; attempt < 2; attempt++) {
+        if (!get_access_token()) {
+            return false;
         }
-        return true;
-    } else {
+
+        HTTPClient http;
+        http.begin(_client, url);
+        http.addHeader("Content-Type", "application/json");
+        _add_auth_headers(http);
+        http.addHeader("Authorization", "Bearer " + _access_token.access_token);
+
+        int http_code = 0;
+        if (method == "GET") {
+            http_code = http.GET();
+        } else if (method == "POST") {
+            http_code = http.POST(request_str);
+        } else if (method == "PUT") {
+            http_code = http.PUT(request_str);
+        } else if (method == "DELETE") {
+            http_code = http.sendRequest("DELETE", request_str);
+        } else {
+            http.end();
+            return false;
+        }
+
+        String response_str = http.getString();
+        http.end();
+
+        if (http_code >= 200 && http_code < 300) {
+            if (response_body && response_str.length() > 0) {
+                deserializeJson(*response_body, response_str);
+            }
+            return true;
+        }
+
+        if (http_code == 401 && attempt == 0) {
+            debugln("API call rejected the access token, fetching a new one");
+            // Clearing only the access token keeps the refresh token, so the
+            // next get_access_token() refreshes instead of signing in again.
+            _access_token.access_token = "";
+            continue;
+        }
+
         log_connection_failure("API call", http_code);
         debug("API call failed: ");
         debugln(http_code);
         debugln(response_str);
         return false;
     }
+
+    return false;
 }
 
