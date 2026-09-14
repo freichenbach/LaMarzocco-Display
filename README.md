@@ -40,7 +40,7 @@ This project is designed for the [LilyGo T-Display S3 AMOLED](https://lilygo.cc/
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/TobiKr/LaMarzocco-Display
+   git clone https://github.com/freichenbach/LaMarzocco-Display
    cd LaMarzocco-Display
    ```
 
