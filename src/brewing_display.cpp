@@ -74,7 +74,9 @@ void brewing_display_init(void) {
     brewing_debugln("[Brewing] Initializing brewing display system...");
     
     // Initialize GPIO 15 for brewing simulation mode
+#ifdef BREWING_SIM_ENABLED
     pinMode(BREWING_SIM_PIN, INPUT_PULLUP);
+#endif
     g_last_gpio_state = digitalRead(BREWING_SIM_PIN) == HIGH;
     brewing_debug("[Brewing] GPIO 15 initialized (current state: ");
     brewing_debug(g_last_gpio_state ? "HIGH" : "LOW");
@@ -570,6 +572,9 @@ bool brewing_display_is_active(void) {
  * GPIO HIGH = exit brewing mode
  */
 void brewing_display_check_gpio_simulation(void) {
+#ifndef BREWING_SIM_ENABLED
+    return;  // debug aid, see BREWING_SIM_PIN in config.h
+#else
     if (!g_initialized) {
         return;
     }
@@ -645,4 +650,5 @@ void brewing_display_check_gpio_simulation(void) {
     // because that's handled when GPIO state changes (above). This prevents conflicts
     // with websocket-triggered brewing. Websocket will handle stopping brewing when
     // it receives a non-brewing status.
+#endif  // BREWING_SIM_ENABLED
 }

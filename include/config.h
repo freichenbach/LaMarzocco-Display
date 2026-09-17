@@ -16,6 +16,9 @@
 static constexpr const char *NTP_SERVER = "pool.ntp.org";
 
 #define  BATTERY_VOLTAGE_PIN 4
+// Debug aid: pulling GPIO 15 low fakes a brewing cycle on the display. Off by
+// default so a release build cannot be triggered by whatever else is wired to
+// that pin; enable with -D BREWING_SIM_ENABLED.
 #define  BREWING_SIM_PIN 15  // GPIO 15 for brewing simulation mode (LOW = brewing, HIGH = normal)
 
 #define USER_INACTIVITY_TIMEOUT_MS  (360UL * 60UL * 1000UL)
@@ -25,6 +28,14 @@ static constexpr const char *NTP_SERVER = "pool.ntp.org";
 #define DISPLAY_BRIGHTNESS_ACTIVE  180
 #define DISPLAY_BRIGHTNESS_DIM  30
 #define DISPLAY_ROTATION  2
+
+// Setup access point: length of the generated WPA2 key and how long the portal
+// keeps running with nobody connected before saved settings are applied
+#define AP_PASSWORD_LENGTH  10
+#define AP_PORTAL_TIMEOUT_MS  (15UL * 60UL * 1000UL)
+
+// Time to wait for the NTP sync that TLS certificate validation depends on
+#define TIME_SYNC_TIMEOUT_MS  (15UL * 1000UL)
 
 #define uS_TO_S_FACTOR 1000000ULL
 

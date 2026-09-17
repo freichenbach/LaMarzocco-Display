@@ -40,7 +40,7 @@ This project is designed for the [LilyGo T-Display S3 AMOLED](https://lilygo.cc/
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/TobiKr/LaMarzocco-Display
+   git clone https://github.com/freichenbach/LaMarzocco-Display
    cd LaMarzocco-Display
    ```
 
@@ -71,8 +71,19 @@ This project is designed for the [LilyGo T-Display S3 AMOLED](https://lilygo.cc/
    Or click the "Upload Filesystem Image" button in the PlatformIO toolbar in VS Code.
    
 7. **Configure WiFi and La Marzocco credentials**
-   - After first boot, the device will create a WiFi access point
+   - After first boot, the device will create a WiFi access point named `shottimer`
+   - The access point is WPA2 protected. The device generates its own key on first
+     boot and shows it on the setup screen, below the network name and the URL
+     (the key is also printed to the serial monitor). It stays the same across
+     reboots.
    - Connect to the AP and configure your WiFi credentials and La Marzocco account details via the web interface
+   - Press **Confirm** on the status page when you are done. The device restarts
+     and applies the settings; if you leave without confirming, it applies them
+     on its own once nothing is connected to the portal any more.
+
+> If the configuration pages show an error about a missing web interface, or the
+> serial monitor reports `SPIFFS mount failed`, step 6 was skipped - the firmware
+> and the web interface are flashed separately.
 
 ### Monitoring Serial Output
 
@@ -88,6 +99,78 @@ The device provides a web interface for configuration. After connecting to your 
 - WiFi credentials
 - La Marzocco account information
 - Display preferences
+
+### Setup access point
+
+The configuration portal carries your WiFi password and your La Marzocco account
+password, so the access point serving it uses WPA2 rather than being open: on an
+open network there is no link layer encryption and anything in range can read
+those forms off the air.
+
+The key is generated per device from the hardware RNG, stored in NVS and shown on
+the setup screen. `AP_PASSWORD_LENGTH` and `AP_PORTAL_TIMEOUT_MS` in
+`include/config.h` control its length and how long the portal waits before
+applying saved settings by itself.
+
+### Brewing simulation
+
+Pulling GPIO 15 low fakes a brewing cycle on the display, which is useful when
+working on the UI without a machine. It is off unless the build defines
+`BREWING_SIM_ENABLED`, so nothing else wired to that pin can trigger it:
+
+```ini
+build_flags =
+    ${env.build_flags}
+    -D BREWING_SIM_ENABLED
+```
+
+Note that the portal is plain HTTP inside that WPA2 network. TLS would need a
+self-signed certificate, which browsers warn about and which an attacker on the
+same network can trivially substitute, and it would break the captive portal
+redirect - so the link layer is the useful place to encrypt here.
+
+### TLS certificate verification
+
+Connections to the La Marzocco cloud (REST API and WebSocket) verify the server
+certificate against the root CAs embedded in `src/lamarzocco_tls.cpp`, and the
+hostname is checked as well. Because certificate dates are part of that check,
+the firmware waits for an NTP sync (`TIME_SYNC_TIMEOUT_MS` in `include/config.h`)
+before the first request.
+
+`lion.lamarzocco.io` is served from AWS, so the store contains the four Amazon
+roots and nothing else. Certificates from any other public CA are rejected, which
+is the point of the check. The leaf certificate and the AWS Certificate Manager
+intermediate below the root rotate on their own and are not pinned.
+
+You can check the chain your device will see with:
+
+```bash
+openssl s_client -showcerts -servername lion.lamarzocco.io \
+  -connect lion.lamarzocco.io:443 </dev/null 2>/dev/null \
+  | grep -E "^ *[0-9]+ (s|i):"
+```
+
+If La Marzocco ever moves off AWS, the handshake fails and the device can no
+longer reach the cloud. The fix is to add the new provider's root certificate to
+`src/lamarzocco_tls.cpp` in PEM form. As an emergency fallback you can build with
+verification disabled:
+
+```ini
+build_flags =
+    ${env.build_flags}
+    -D LM_TLS_INSECURE
+```
+
+This restores the previous behaviour, in which any certificate is accepted and the
+connection can be intercepted. Use it only to get a device working again, not as a
+permanent setting.
+
+## Continuous Integration
+
+Every push and pull request builds the firmware and the filesystem image through
+`.github/workflows/build.yml`, and uploads both as artifacts. This catches build
+breakage without a device attached; anything touching the display, the access
+point or the cloud connection still needs to be tried on real hardware.
 
 ## Contributing
 

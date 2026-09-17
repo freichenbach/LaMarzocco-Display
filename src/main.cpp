@@ -15,6 +15,7 @@
 #include "water_alarm.h"
 #include "brewing_display.h"
 #include "activity_monitor.h"
+#include "lamarzocco_tls.h"
 
 Preferences preferences;
 LaMarzoccoClient* g_client = nullptr;
@@ -168,7 +169,17 @@ void setup()
     if (connectToWiFi(ssid, pass))
     {
       lv_disp_load_scr(ui_mainScreen);
-      
+
+      // NTP only starts syncing once WiFi is up. The TLS handshake with the
+      // cloud checks the certificate dates, so wait for a valid clock before
+      // the first request instead of failing verification on a 1970 date.
+      configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
+      if (lm_tls_wait_for_clock(TIME_SYNC_TIMEOUT_MS)) {
+        debugln("Clock synchronized via NTP");
+      } else {
+        Serial.println("[TLS] NTP sync timed out - certificate validation may fail");
+      }
+
       // Initialize La Marzocco client
       String email = preferences.getString("USER_EMAIL", "");
       String password = preferences.getString("USER_PASS", "");
@@ -281,6 +292,7 @@ void setup()
 
 void loop()
 {
+  servicePortalRequest();  // starts the setup portal when the UI asked for it
   updateDateTime();
   updateStatusImages();  // Update battery and WiFi images (initial + every 30 seconds)
   checkWiFiConnection(); // Monitor WiFi connection and redirect if disconnected
