@@ -445,7 +445,17 @@ bool LaMarzoccoWebSocket::connect(const String& serial_number) {
     // Connect to websocket (the SSL handshake is handled by the library)
     const char* ca_store = lm_tls_ca_store();
     if (ca_store) {
-        _ws.beginSslWithCA(WS_BASE_URL, 443, "/ws/connect", ca_store);
+        // Not beginSslWithCA(): WebSocketsClient leaves _client_cert and
+        // _client_key uninitialised in its constructor, and beginSslWithCA()
+        // sets neither. Whatever the object memory happened to hold then passes
+        // the library's "if(_client_cert && _client_key)" test, and the garbage
+        // pointers reach mbedTLS - a LoadProhibited panic on the first connect.
+        // beginSslWithClientKey() assigns both before handing over to
+        // beginSslWithCA(), so passing null here clears them. ESP32 builds
+        // cannot use setSSLClientCertKey() for this: WebSockets.h defines
+        // SSL_AXTLS there, which drops that method.
+        _ws.beginSslWithClientKey(WS_BASE_URL, 443, "/ws/connect", ca_store,
+                                  nullptr, nullptr);
     } else {
         _ws.beginSSL(WS_BASE_URL, 443, "/ws/connect");
     }
