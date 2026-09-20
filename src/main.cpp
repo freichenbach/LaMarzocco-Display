@@ -69,9 +69,9 @@ static void reportWiFiFailure(const String &ssid)
   for (int i = 0; i < found; i++) {
     if (WiFi.SSID(i) == ssid) {
       seen = true;
-      Serial.printf("[WIFI] '%s' is in range: channel %d, %d dBm, security %s\n",
-                    ssid.c_str(), (int)WiFi.channel(i), (int)WiFi.RSSI(i),
-                    authModeName(WiFi.encryptionType(i)));
+      Serial.printf("[WIFI] '%s' on %s: channel %d, %d dBm, security %s\n",
+                    ssid.c_str(), WiFi.BSSIDstr(i).c_str(), (int)WiFi.channel(i),
+                    (int)WiFi.RSSI(i), authModeName(WiFi.encryptionType(i)));
     }
   }
   if (!seen) {
@@ -91,6 +91,15 @@ bool connectToWiFi(const String &ssid, const String &password)
     disconnect_logging_registered = true;
   }
 
+  // The default scan stops at the first access point answering to the network
+  // name and connects to that one, however weak it is. In a building with one
+  // access point per floor that is regularly the wrong one - a device three
+  // metres from an access point ended up on a distant one at -98 dBm, losing
+  // beacons and failing every TLS handshake. Scanning all channels makes the
+  // sort below apply, so the strongest one wins.
+  WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
+  WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
+
   WiFi.begin(ssid.c_str(), password.c_str());
   WiFi.setSleep(false);
   int retries = 0;
@@ -107,6 +116,10 @@ bool connectToWiFi(const String &ssid, const String &password)
     debugln("WiFi connected!");
     debug("IP address: ");
     debugln(WiFi.localIP());
+    // Which access point was picked, so a weak one is visible immediately
+    // rather than as a string of odd failures further along.
+    Serial.printf("[WIFI] Connected to %s, channel %d, %d dBm\n",
+                  WiFi.BSSIDstr().c_str(), (int)WiFi.channel(), (int)WiFi.RSSI());
     return true;
   }
   else
