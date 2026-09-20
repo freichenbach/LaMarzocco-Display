@@ -136,6 +136,23 @@ void enterDeepSleep() {
 void setup()
 {
   Serial.begin(115200);
+
+#ifdef DEBUG
+  // This board speaks USB directly from the ESP32-S3, so the CDC device
+  // re-enumerates when the application takes over from the bootloader. The
+  // host's serial monitor needs a moment to reattach and misses everything
+  // printed until then - which is most of setup(), including why the WiFi
+  // connection failed. Wait for the host to reopen the port, capped so a
+  // device running without a monitor is not held up.
+  unsigned long serial_wait_started = millis();
+  while (!Serial && (millis() - serial_wait_started) < 3000) {
+    delay(10);
+  }
+  delay(300);  // let the monitor settle before the first lines go out
+  Serial.println();
+  Serial.println("[BOOT] Starting up");
+#endif
+
   preferences.begin("config", false);
   pinMode(0, INPUT_PULLUP);
 
