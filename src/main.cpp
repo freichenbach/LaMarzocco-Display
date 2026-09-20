@@ -31,9 +31,66 @@ void updateSerialLoggingPowerState(bool force);
 const int MAX_WIFI_RETRIES = 10;
 const int WIFI_TIMEOUT_MS = 15000;
 
+static const char *authModeName(wifi_auth_mode_t mode)
+{
+  switch (mode) {
+    case WIFI_AUTH_OPEN:            return "open";
+    case WIFI_AUTH_WEP:             return "WEP";
+    case WIFI_AUTH_WPA_PSK:         return "WPA";
+    case WIFI_AUTH_WPA2_PSK:        return "WPA2";
+    case WIFI_AUTH_WPA_WPA2_PSK:    return "WPA/WPA2";
+    case WIFI_AUTH_WPA2_ENTERPRISE: return "WPA2-Enterprise";
+    case WIFI_AUTH_WPA3_PSK:        return "WPA3";
+    case WIFI_AUTH_WPA2_WPA3_PSK:   return "WPA2/WPA3";
+    default:                        return "unknown";
+  }
+}
+
+// The access point states why it refused the association. Without this the
+// firmware can only report that the connection did not happen, which looks
+// identical for a wrong password, a network on 5 GHz and an access point that
+// requires an authentication mode the ESP32 does not speak.
+static void logWiFiDisconnect(WiFiEvent_t event, WiFiEventInfo_t info)
+{
+  if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+    Serial.printf("[WIFI] Association refused, reason %u\n",
+                  info.wifi_sta_disconnected.reason);
+  }
+}
+
+// Called once the retries are used up: is the configured network in range at
+// all, and if so, what does it require?
+static void reportWiFiFailure(const String &ssid)
+{
+  Serial.printf("[WIFI] Giving up, status %d\n", WiFi.status());
+
+  int found = WiFi.scanNetworks();
+  bool seen = false;
+  for (int i = 0; i < found; i++) {
+    if (WiFi.SSID(i) == ssid) {
+      seen = true;
+      Serial.printf("[WIFI] '%s' is in range: channel %d, %d dBm, security %s\n",
+                    ssid.c_str(), (int)WiFi.channel(i), (int)WiFi.RSSI(i),
+                    authModeName(WiFi.encryptionType(i)));
+    }
+  }
+  if (!seen) {
+    Serial.printf("[WIFI] '%s' is not among the %d networks in range - this "
+                  "radio only sees 2.4 GHz.\n", ssid.c_str(), found);
+  }
+  WiFi.scanDelete();
+}
+
 bool connectToWiFi(const String &ssid, const String &password)
 {
   debugln("Attempting to connect to WiFi...");
+
+  static bool disconnect_logging_registered = false;
+  if (!disconnect_logging_registered) {
+    WiFi.onEvent(logWiFiDisconnect);
+    disconnect_logging_registered = true;
+  }
+
   WiFi.begin(ssid.c_str(), password.c_str());
   WiFi.setSleep(false);
   int retries = 0;
@@ -57,6 +114,7 @@ bool connectToWiFi(const String &ssid, const String &password)
     debugln("");
     debugln("Failed to connect to WiFi");
     WiFi.disconnect();
+    reportWiFiFailure(ssid);
     return false;
   }
 }

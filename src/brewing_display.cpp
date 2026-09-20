@@ -76,11 +76,11 @@ void brewing_display_init(void) {
     // Initialize GPIO 15 for brewing simulation mode
 #ifdef BREWING_SIM_ENABLED
     pinMode(BREWING_SIM_PIN, INPUT_PULLUP);
-#endif
     g_last_gpio_state = digitalRead(BREWING_SIM_PIN) == HIGH;
     brewing_debug("[Brewing] GPIO 15 initialized (current state: ");
     brewing_debug(g_last_gpio_state ? "HIGH" : "LOW");
     brewing_debugln(")");
+#endif
     
     TAKE_MUTEX() {
         // Hide brewing elements by default
