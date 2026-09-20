@@ -81,15 +81,16 @@ int getWiFiLevel(void)
     // back as disconnect reason 200.
     Serial.printf("[WIFI] RSSI %d dBm, channel %d\n", (int)rssi, (int)WiFi.channel());
 
-    // Map RSSI to WiFi level (0-3)
-    // -90 dBm or less = no signal (0)
-    // -80 to -67 = weak (1)
-    // -66 to -51 = medium (2)
+    // Map RSSI to WiFi level (1-3). Level 0 draws the crossed out icon and is
+    // reserved for "not connected" above: a link this weak still carries data,
+    // and claiming there is no connection while the machine updates on screen
+    // is worse than showing a single bar.
     // -50 or better = strong (3)
+    // -66 to -51 = medium (2)
+    // below -66 = weak (1)
     if (rssi >= -50) return 3;        // Strong - wifi3
     else if (rssi >= -66) return 2;   // Medium - wifi2
-    else if (rssi >= -80) return 1;   // Weak - wifi1
-    else return 0;                    // Very weak - wifi0
+    else return 1;                    // Weak - wifi1
 }
 
 void updateBatteryImages(void)
