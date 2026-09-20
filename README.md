@@ -112,6 +112,14 @@ the setup screen. `AP_PASSWORD_LENGTH` and `AP_PORTAL_TIMEOUT_MS` in
 `include/config.h` control its length and how long the portal waits before
 applying saved settings by itself.
 
+### Battery indicator
+
+The board cannot detect whether a battery is attached: with none connected, the
+reading on the battery pin still sits near 4 V, so the display would show a full
+battery that is not there. The indicator is therefore off by default and the
+icon is hidden. Set `BATTERY_ICON_ENABLED` to 1 in `include/config.h` when
+running from a battery.
+
 ### Brewing simulation
 
 Pulling GPIO 15 low fakes a brewing cycle on the display, which is useful when

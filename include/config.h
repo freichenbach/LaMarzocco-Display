@@ -16,6 +16,11 @@
 static constexpr const char *NTP_SERVER = "pool.ntp.org";
 
 #define  BATTERY_VOLTAGE_PIN 4
+
+// The hardware cannot tell whether a battery is attached: with none connected
+// the reading on BATTERY_VOLTAGE_PIN still sits near 4 V, so the display shows
+// a full battery that does not exist. Set to 1 when running on a battery.
+#define BATTERY_ICON_ENABLED  0
 // Debug aid: pulling GPIO 15 low fakes a brewing cycle on the display. Off by
 // default so a release build cannot be triggered by whatever else is wired to
 // that pin; enable with -D BREWING_SIM_ENABLED.

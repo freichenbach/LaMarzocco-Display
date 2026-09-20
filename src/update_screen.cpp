@@ -95,6 +95,23 @@ int getWiFiLevel(void)
 
 void updateBatteryImages(void)
 {
+#if !BATTERY_ICON_ENABLED
+    // Hide it instead of showing a level read off the supply rail. Once the
+    // flag is set it stays set, so there is nothing to do on later calls - and
+    // the analog read, along with its logging, is skipped entirely.
+    static bool battery_icon_hidden = false;
+    if (battery_icon_hidden) {
+        return;
+    }
+    if (gui_mutex && xSemaphoreTake(gui_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        if (ui_BatImage)  lv_obj_add_flag(ui_BatImage,  LV_OBJ_FLAG_HIDDEN);
+        if (ui_BatImage1) lv_obj_add_flag(ui_BatImage1, LV_OBJ_FLAG_HIDDEN);
+        if (ui_BatImage2) lv_obj_add_flag(ui_BatImage2, LV_OBJ_FLAG_HIDDEN);
+        xSemaphoreGive(gui_mutex);
+        battery_icon_hidden = true;
+    }
+    return;
+#else
     int batteryLevel = getBatteryLevel();
     
     // Select appropriate battery image
@@ -128,6 +145,7 @@ void updateBatteryImages(void)
         
         xSemaphoreGive(gui_mutex);
     }
+#endif
 }
 
 void updateWiFiImages(void)
