@@ -27,8 +27,14 @@ static void log_connection_failure(const char* what, int http_code)
     }
     Serial.printf("[TLS] %s could not connect: %s (%d)\n",
                   what, HTTPClient::errorToString(http_code).c_str(), http_code);
-    Serial.println("[TLS] If this persists, the server certificate may no longer chain "
-                   "to a root in src/lamarzocco_tls.cpp");
+
+    // Only a refused connection points at the trust store. A read timeout means
+    // the handshake already succeeded and the server went quiet, so blaming the
+    // certificate there sends the reader down the wrong path.
+    if (http_code == HTTPC_ERROR_CONNECTION_REFUSED) {
+        Serial.println("[TLS] If this persists, the server certificate may no longer "
+                       "chain to a root in src/lamarzocco_tls.cpp");
+    }
 }
 
 LaMarzoccoClient::LaMarzoccoClient(Preferences& prefs) 
