@@ -34,6 +34,12 @@ static constexpr const char *NTP_SERVER = "pool.ntp.org";
 #define AP_PASSWORD_LENGTH  10
 #define AP_PORTAL_TIMEOUT_MS  (15UL * 60UL * 1000UL)
 
+// How often the startup sign in is retried before giving up, and the pause
+// between attempts. Only transport errors are retried; a rejected credential
+// is final.
+#define AUTH_ATTEMPTS_AT_STARTUP  3
+#define AUTH_RETRY_DELAY_MS  (3UL * 1000UL)
+
 // Time to wait for the NTP sync that TLS certificate validation depends on
 #define TIME_SYNC_TIMEOUT_MS  (15UL * 1000UL)
 

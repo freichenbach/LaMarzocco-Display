@@ -47,6 +47,11 @@ public:
     
     // Get access token string (for websocket)
     String get_access_token_string() const { return _access_token.access_token; }
+
+    // HTTP status of the last sign in or token refresh. A 4xx is an answer from
+    // the server - the credentials really were rejected. A negative value is a
+    // transport error and says nothing about the credentials.
+    int get_last_auth_status() const { return _last_auth_status; }
     
 private:
     Preferences& _prefs;
@@ -56,6 +61,7 @@ private:
     String _password;
     String _serial_number;
     bool _initialized;
+    int _last_auth_status = 0;
     WiFiClientSecure _client;
     
     // Internal helpers

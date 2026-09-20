@@ -122,6 +122,7 @@ bool LaMarzoccoClient::_sign_in() {
     int http_code = http.POST(request_body);
     String response = http.getString();
     http.end();
+    _last_auth_status = http_code;
     
     if (http_code == 200) {
         JsonDocument response_doc;
@@ -167,6 +168,7 @@ bool LaMarzoccoClient::_refresh_token() {
     int http_code = http.POST(request_body);
     String response = http.getString();
     http.end();
+    _last_auth_status = http_code;
     
     if (http_code == 200) {
         JsonDocument response_doc;

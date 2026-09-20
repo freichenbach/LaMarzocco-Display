@@ -328,20 +328,55 @@ void setup()
             // Note: Registration failures are not critical, will retry during API calls
           }
           
-          // Try to get access token (authenticate)
-          if (!g_client->get_access_token()) {
-            debugln("Authorization failed - invalid credentials");
-            
+          // Try to get access token (authenticate). A single attempt used to be
+          // enough to declare the credentials invalid and drop into the setup
+          // portal, so one timed out request during startup cost the whole
+          // session - and told the user their password was wrong.
+          bool authorized = false;
+          for (int attempt = 1; attempt <= AUTH_ATTEMPTS_AT_STARTUP; attempt++) {
+            authorized = g_client->get_access_token();
+            if (authorized) {
+              break;
+            }
 
-            showNoConnectionScreen(
-              "Authorization Failed!\n"
-              "Invalid credentials\n"
-              "Please restart WiFi Setup"
-            );
-            
-            delete g_client;
-            g_client = nullptr;
-            setupWEB();
+            int status = g_client->get_last_auth_status();
+            Serial.printf("[AUTH] Sign in attempt %d of %d failed, status %d\n",
+                          attempt, AUTH_ATTEMPTS_AT_STARTUP, status);
+
+            // A 4xx is the server answering that it rejected the credentials.
+            // Retrying cannot change that; anything else is worth another try.
+            if (status >= 400 && status < 500) {
+              break;
+            }
+            if (attempt < AUTH_ATTEMPTS_AT_STARTUP) {
+              delay(AUTH_RETRY_DELAY_MS);
+            }
+          }
+
+          if (!authorized) {
+            int status = g_client->get_last_auth_status();
+            if (status >= 400 && status < 500) {
+              debugln("Authorization failed - the server rejected the credentials");
+              showNoConnectionScreen(
+                "Authorization Failed!\n"
+                "Invalid credentials\n"
+                "Please restart WiFi Setup"
+              );
+
+              delete g_client;
+              g_client = nullptr;
+              setupWEB();
+            } else {
+              // The cloud could not be reached. The credentials may be perfectly
+              // fine, so keep the client: every later API call signs in again on
+              // its own, and the device recovers without being reconfigured.
+              Serial.println("[AUTH] Cloud unreachable at startup, will keep retrying");
+              showNoConnectionScreen(
+                "Cloud Unreachable!\n"
+                "Could not sign in\n"
+                "Retrying..."
+              );
+            }
           } else {
             // Initialize websocket and machine
             g_websocket = new LaMarzoccoWebSocket(*g_client);

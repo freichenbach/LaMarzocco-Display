@@ -74,7 +74,13 @@ int getWiFiLevel(void)
     }
     
     int32_t rssi = WiFi.RSSI();
-    
+
+    // Logged next to the battery voltage: a link that keeps dropping out shows
+    // up here long before it is visible as a failed connection. Below about
+    // -75 dBm an ESP32 starts losing beacons, which the access point reports
+    // back as disconnect reason 200.
+    Serial.printf("[WIFI] RSSI %d dBm, channel %d\n", (int)rssi, (int)WiFi.channel());
+
     // Map RSSI to WiFi level (0-3)
     // -90 dBm or less = no signal (0)
     // -80 to -67 = weak (1)
