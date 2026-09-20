@@ -199,14 +199,22 @@ void LaMarzoccoWebSocket::_handle_websocket_event(WStype_t type, uint8_t* payloa
                 
                 debugln("Sending STOMP CONNECT:");
                 debugln("--- RAW CONNECT MESSAGE ---");
-                // Print with visible control characters for debugging
-                for (size_t i = 0; i < connect_msg.length() && i < 500; i++) {
-                    char c = connect_msg[i];
-                    if (c == '\n') Serial.print("\\n\n");
-                    else if (c == '\x00') Serial.print("\\x00");
-                    else Serial.print(c);
+                // The frame carries the bearer token, which anyone reading the
+                // serial output - or a log pasted somewhere for help - would
+                // otherwise get in full. The surrounding lines were already
+                // debug-only, but this loop printed unconditionally.
+                String connect_log = connect_msg;
+                if (_cached_token.length() > 0) {
+                    connect_log.replace(_cached_token, "<token redacted>");
                 }
-                Serial.println();
+                // Print with visible control characters for debugging
+                for (size_t i = 0; i < connect_log.length() && i < 500; i++) {
+                    char c = connect_log[i];
+                    if (c == '\n') debug("\\n\n");
+                    else if (c == '\x00') debug("\\x00");
+                    else debug(c);
+                }
+                debugln("");
                 debugln("--- END MESSAGE ---");
                 
                 // Send the STOMP CONNECT message immediately
@@ -275,11 +283,11 @@ void LaMarzoccoWebSocket::_handle_websocket_event(WStype_t type, uint8_t* payloa
                         // Print with visible control characters
                         for (size_t i = 0; i < subscribe_msg.length(); i++) {
                             char c = subscribe_msg[i];
-                            if (c == '\n') Serial.print("\\n\n");
-                            else if (c == '\x00') Serial.print("\\x00");
-                            else Serial.print(c);
+                            if (c == '\n') debug("\\n\n");
+                            else if (c == '\x00') debug("\\x00");
+                            else debug(c);
                         }
-                        Serial.println();
+                        debugln("");
                         debugln("--- END MESSAGE ---");
                         _ws.sendTXT(subscribe_msg);
                         _connected = true;
