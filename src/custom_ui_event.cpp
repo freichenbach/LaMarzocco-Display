@@ -2,6 +2,7 @@
 #include "lamarzocco_machine.h"
 #include "activity_monitor.h"
 #include "web.h"
+#include "machine_actions.h"
 
 extern LaMarzoccoMachine* g_machine;
 
@@ -38,84 +39,71 @@ void wifiSetup(lv_event_t *e)
     lv_scr_load(ui_setupWifiScreen);
 }
 
+enum PendingAction : uint8_t {
+  PENDING_NONE = 0,
+  PENDING_POWER,
+  PENDING_STEAM,
+};
+
+static volatile PendingAction g_pending_action = PENDING_NONE;
+
+void machine_action_request_power_toggle(void)
+{
+  g_pending_action = PENDING_POWER;
+}
+
+void machine_action_request_steam_toggle(void)
+{
+  g_pending_action = PENDING_STEAM;
+}
+
+static void run_machine_action(PendingAction action)
+{
+  if (!g_machine) {
+    Serial.println("[ACTION] No machine client - not configured?");
+    return;
+  }
+
+  const char *what = (action == PENDING_POWER) ? "power" : "steam boiler";
+  Serial.printf("[ACTION] Toggling %s\n", what);
+
+  if (!g_machine->is_websocket_connected()) {
+    Serial.println("[ACTION] WebSocket not connected, connecting first");
+    if (g_machine->connect_websocket()) {
+      delay(1000);  // give the connection a moment to come up
+    } else {
+      Serial.println("[ACTION] Could not initiate the WebSocket connection");
+    }
+  }
+
+  bool success = (action == PENDING_POWER) ? g_machine->toggle_power()
+                                           : g_machine->toggle_steam();
+
+  // No UI update here: the button state follows the WebSocket confirmation,
+  // which also avoids taking the GUI mutex from this side.
+  Serial.printf("[ACTION] %s toggle %s\n", what, success ? "sent" : "failed");
+}
+
+void machine_actions_process(void)
+{
+  PendingAction action = g_pending_action;
+  if (action == PENDING_NONE) {
+    return;
+  }
+  g_pending_action = PENDING_NONE;
+  run_machine_action(action);
+}
+
+// Both callbacks below run in the LVGL task and must return quickly, so they
+// only note the request. See include/machine_actions.h.
 void turnOnMachine(lv_event_t * e)
 {
   activity_monitor_mark_user_activity();
-  // Get the machine control instance
-  if (g_machine) {
-    Serial.println("===========================================");
-    Serial.println("BUTTON PRESSED - Processing...");
-    Serial.println("===========================================");
-    
-    // Check current websocket status
-    if (g_machine->is_websocket_connected()) {
-      Serial.println("✓ WebSocket is already connected");
-    } else {
-      Serial.println("⚠ WebSocket not connected, attempting to connect...");
-      bool connected = g_machine->connect_websocket();
-      if (connected) {
-        Serial.println("✓ WebSocket connection initiated");
-        // Give it a moment to establish
-        delay(1000);
-      } else {
-        Serial.println("✗ Failed to initiate WebSocket connection");
-      }
-    }
-    
-    // Toggle the power
-    Serial.println("\nToggling machine power...");
-    bool success = g_machine->toggle_power();
-    if (success) {
-      Serial.println("✓ Power toggle command sent successfully");
-      Serial.println("Check WebSocket messages below for confirmation...");
-    } else {
-      Serial.println("✗ Failed to send power toggle command");
-    }
-    
-    Serial.println("===========================================\n");
-  } else {
-    Serial.println("ERROR: g_machine is null!");
-  }
+  machine_action_request_power_toggle();
 }
 
 void toggleSteamBoiler(lv_event_t * e)
 {
   activity_monitor_mark_user_activity();
-  // Get the machine control instance
-  if (g_machine) {
-    Serial.println("===========================================");
-    Serial.println("STEAM BUTTON PRESSED - Processing...");
-    Serial.println("===========================================");
-    
-    // Check current websocket status
-    if (g_machine->is_websocket_connected()) {
-      Serial.println("✓ WebSocket is already connected");
-    } else {
-      Serial.println("⚠ WebSocket not connected, attempting to connect...");
-      bool connected = g_machine->connect_websocket();
-      if (connected) {
-        Serial.println("✓ WebSocket connection initiated");
-        // Give it a moment to establish
-        delay(1000);
-      } else {
-        Serial.println("✗ Failed to initiate WebSocket connection");
-      }
-    }
-    
-    // Toggle the steam boiler
-    Serial.println("\nToggling steam boiler...");
-    bool success = g_machine->toggle_steam();
-    if (success) {
-      Serial.println("✓ Steam boiler toggle command sent successfully");
-      Serial.println("WebSocket will confirm state change...");
-      // Note: No UI update here - button state will update when WebSocket
-      // confirms the change. This avoids mutex deadlock.
-    } else {
-      Serial.println("✗ Failed to send steam boiler toggle command");
-    }
-    
-    Serial.println("===========================================\n");
-  } else {
-    Serial.println("ERROR: g_machine is null!");
-  }
+  machine_action_request_steam_toggle();
 }
