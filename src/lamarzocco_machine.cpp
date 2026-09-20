@@ -88,6 +88,7 @@ void LaMarzoccoMachine::_websocket_message_handler(const String& message) {
                     
                     if (machine_status) {
                         _instance->_power_state = (strcmp(machine_status, "PoweredOn") == 0);
+                        _instance->_status_reported = true;
                         Serial.print("📊 Machine status: ");
                         Serial.print(machine_status);
                         if (machine_mode) {

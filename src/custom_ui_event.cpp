@@ -65,7 +65,18 @@ static void run_machine_action(PendingAction action)
   }
 
   const char *what = (action == PENDING_POWER) ? "power" : "steam boiler";
-  Serial.printf("[ACTION] Toggling %s\n", what);
+
+  // Which way the toggle goes depends on the last known state, so log it: a
+  // command that appears to do nothing, or the opposite of what was wanted,
+  // is usually a stale starting point rather than a lost command.
+  bool current = (action == PENDING_POWER) ? g_machine->get_power_state()
+                                           : g_machine->get_steam_state();
+  Serial.printf("[ACTION] Toggling %s: %s -> %s\n", what,
+                current ? "on" : "off", current ? "off" : "on");
+  if (!g_machine->has_reported_status()) {
+    Serial.println("[ACTION] The machine has not reported its status yet, so the "
+                   "starting point above is a default, not a reading");
+  }
 
   if (!g_machine->is_websocket_connected()) {
     Serial.println("[ACTION] WebSocket not connected, connecting first");

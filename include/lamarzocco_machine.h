@@ -13,6 +13,11 @@ public:
     
     // Get current power state (from last command or websocket update)
     bool get_power_state() const { return _power_state; }
+
+    // False until the machine has actually reported its status. Until then the
+    // power and steam flags are only defaults, and a toggle built on them can
+    // send the opposite of what the user meant.
+    bool has_reported_status() const { return _status_reported; }
     
     // Toggle power
     bool toggle_power();
@@ -46,6 +51,7 @@ private:
     LaMarzoccoWebSocket& _websocket;
     bool _power_state;
     bool _steam_state;
+    bool _status_reported = false;
     bool _stats_refresh_pending = false;
     unsigned long _last_stats_refresh_ms = 0;
     
