@@ -61,11 +61,34 @@ bool connectToWiFi(const String &ssid, const String &password)
   }
 }
 
+// LilyGo_AMOLED::isVbusIn() is only implemented for the board variants that
+// carry a power management chip. On the others - including the 1.91" QSPI board
+// this firmware is built for - it returns false unconditionally, which is
+// indistinguishable from "running on battery".
+static bool boardReportsVbus()
+{
+  switch (amoled.getBoardID()) {
+    case LILYGO_AMOLED_147:
+    case LILYGO_AMOLED_241:
+    case LILYGO_AMOLED_191_SPI:
+      return true;
+    default:
+      return false;
+  }
+}
+
 void updateSerialLoggingPowerState(bool force)
 {
   static bool serial_enabled = true;
   static unsigned long last_check_ms = 0;
   unsigned long now = millis();
+
+  // Without a usable VBUS reading this would shut down USB serial on a device
+  // that is plainly USB powered, and never turn it back on - the serial monitor
+  // would be gone for good on exactly the board this targets.
+  if (!boardReportsVbus()) {
+    return;
+  }
 
   if (!force && (now - last_check_ms) < 5000) {
     return;
