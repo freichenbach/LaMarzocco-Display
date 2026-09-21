@@ -1,4 +1,5 @@
 #include "brewing_display.h"
+#include "shot_log.h"
 #include "scale_ble.h"
 #include "shot_view.h"
 #include "water_alarm.h"
@@ -139,11 +140,14 @@ static void start_brewing(int64_t start_time) {
     // that does change mid shot is a scale that stops reporting, handled in the
     // brewing timer.
     g_scale_mode = shot_view_available();
+    shot_log_printf("[SHOT] start, scale %s", g_scale_mode ? "yes" : "no");
     if (g_scale_mode) {
 #if SCALE_AUTO_TARE
         // Zero the scale and start its own timer in one command, so the cup
         // already on the tray does not count towards the shot.
-        if (!scale_ble_send(bookoo::Command::TareAndStartTimer)) {
+        bool tared = scale_ble_send(bookoo::Command::TareAndStartTimer);
+        shot_log_printf("[SHOT] tare %s", tared ? "ok" : "FAILED");
+        if (!tared) {
             Serial.println("[Brewing] Could not tare the scale");
         }
 #endif
@@ -196,6 +200,15 @@ static void stop_brewing(void) {
     brewing_debug("[Brewing] Final seconds to flash: ");
     brewing_debugln(g_final_seconds);
     
+    {
+        bookoo::Reading reading;
+        uint32_t age_ms = 0;
+        bool have = scale_ble_last_reading(reading, age_ms);
+        shot_log_printf("[SHOT] end after %lld ms, final weight %s",
+                        (long long)final_elapsed_ms,
+                        have ? String(reading.weight_g, 1).c_str() : "none");
+    }
+
     if (g_scale_mode) {
         // The curves replace the three second flash of the final time. The
         // result keeps the tenth of a second the flash view rounds away.
@@ -300,6 +313,7 @@ void brewing_display_timer_callback(lv_timer_t* timer) {
                     (now_ms - g_brewing_start_time) > (int64_t)BREWING_MAX_SECONDS * 1000) {
                     Serial.println("[Brewing] No stop message arrived within the maximum "
                                    "duration - clearing the timer");
+                    shot_log_printf("[SHOT] watchdog cleared a timer that never stopped");
                     g_state = BREWING_STATE_IDLE;
                     g_final_seconds = 0;
                     g_brewing_start_time = 0;
@@ -316,12 +330,29 @@ void brewing_display_timer_callback(lv_timer_t* timer) {
                         // The scale went quiet mid shot. Drop back to the plain
                         // timer rather than freezing a stale weight on screen.
                         Serial.println("[Brewing] Scale stopped reporting - back to the plain timer");
+                        shot_log_printf("[SHOT] scale went quiet mid shot");
                         g_scale_mode = false;
                         shot_view_hide();
                         if (ui_SecPanel) lv_obj_clear_flag(ui_SecPanel, LV_OBJ_FLAG_HIDDEN);
                         if (ui_SecValueLabel) lv_obj_clear_flag(ui_SecValueLabel, LV_OBJ_FLAG_HIDDEN);
                     } else {
-                        shot_view_tick(now_ms - g_brewing_start_time);
+                        int64_t elapsed_ms = now_ms - g_brewing_start_time;
+                        shot_view_tick(elapsed_ms);
+
+                        // One line per sample, so the curve can be rebuilt from
+                        // the log even when nothing was watching the screen.
+                        static int64_t last_logged_ms = -SHOT_SAMPLE_INTERVAL_MS;
+                        if (elapsed_ms - last_logged_ms >= SHOT_SAMPLE_INTERVAL_MS) {
+                            last_logged_ms = elapsed_ms;
+                            bookoo::Reading reading;
+                            uint32_t age_ms = 0;
+                            if (scale_ble_last_reading(reading, age_ms)) {
+                                shot_log_printf("[SHOT] t=%.1f w=%.1f f=%.2f",
+                                                elapsed_ms / 1000.0f,
+                                                reading.weight_g,
+                                                reading.flow_g_per_s);
+                            }
+                        }
                         break;
                     }
                 }

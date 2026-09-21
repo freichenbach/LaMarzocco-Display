@@ -1,6 +1,7 @@
 #include "scale_ble.h"
 #include "config.h"
 #include "wifi_power.h"
+#include "shot_log.h"
 
 #include <Arduino.h>
 
@@ -119,6 +120,7 @@ bool connect_to_scale()
     g_command_char = service->getCharacteristic(NimBLEUUID(bookoo::COMMAND_CHAR));
     g_connected = true;
     Serial.println("[SCALE] Subscribed to weight notifications");
+    shot_log_printf("[SCALE] connected and subscribed");
     return true;
 }
 
