@@ -26,8 +26,12 @@ lv_obj_t *g_flow_value   = nullptr;
 lv_obj_t *g_result_value = nullptr;
 lv_obj_t *g_result_avg   = nullptr;
 lv_obj_t *g_hint         = nullptr;
-lv_obj_t *g_axis_y[3]    = {nullptr, nullptr, nullptr};
-lv_obj_t *g_axis_x[3]    = {nullptr, nullptr, nullptr};
+// Two scales, because the two curves measure different things over different
+// ranges: flow in grams per second on the left, weight in grams on the right.
+// Each is scaled to its own maximum, so both fill the chart.
+lv_obj_t *g_axis_flow[3]   = {nullptr, nullptr, nullptr};
+lv_obj_t *g_axis_weight[3] = {nullptr, nullptr, nullptr};
+lv_obj_t *g_axis_x[3]      = {nullptr, nullptr, nullptr};
 lv_obj_t *g_legend_flow   = nullptr;
 lv_obj_t *g_legend_weight = nullptr;
 
@@ -94,7 +98,8 @@ void layout_live(void)
     show(g_legend_flow, false);
     show(g_legend_weight, false);
     for (int i = 0; i < 3; i++) {
-        show(g_axis_y[i], false);
+        show(g_axis_flow[i], false);
+        show(g_axis_weight[i], false);
         show(g_axis_x[i], false);
     }
 
@@ -123,13 +128,16 @@ void layout_result(void)
     show(g_legend_flow, true);
     show(g_legend_weight, true);
     for (int i = 0; i < 3; i++) {
-        show(g_axis_y[i], true);
+        show(g_axis_flow[i], true);
+        show(g_axis_weight[i], true);
         show(g_axis_x[i], true);
     }
 
     lv_chart_hide_series(g_chart, g_series_weight, false);
+    // Narrower than the screen on both sides: the flow scale stands to the
+    // left of it, the weight scale to the right.
     lv_obj_set_pos(g_chart, 44, 56);
-    lv_obj_set_size(g_chart, 468, 144);
+    lv_obj_set_size(g_chart, 424, 144);
 }
 
 }  // namespace
@@ -216,21 +224,29 @@ void shot_view_init(void)
     g_result_avg = make_label(&lv_font_montserrat_14, muted);
     lv_obj_align(g_result_avg, LV_ALIGN_TOP_RIGHT, -16, 12);
 
+    // The legend names the unit as well as the colour, so the numbers on the
+    // two scales need no further explanation.
     g_legend_flow = make_label(&lv_font_montserrat_12, flow);
-    lv_label_set_text(g_legend_flow, "Fluss");
-    lv_obj_align(g_legend_flow, LV_ALIGN_TOP_RIGHT, -16, 30);
+    lv_label_set_text(g_legend_flow, "Fluss g/s");
+    lv_obj_align(g_legend_flow, LV_ALIGN_TOP_LEFT, 16, 32);
 
     g_legend_weight = make_label(&lv_font_montserrat_12, mass);
-    lv_label_set_text(g_legend_weight, "Gewicht");
-    lv_obj_align(g_legend_weight, LV_ALIGN_TOP_RIGHT, -80, 30);
+    lv_label_set_text(g_legend_weight, "Gewicht g");
+    lv_obj_align(g_legend_weight, LV_ALIGN_TOP_LEFT, 96, 32);
 
     for (int i = 0; i < 3; i++) {
-        g_axis_y[i] = make_label(&lv_font_montserrat_12, muted);
-        lv_obj_align(g_axis_y[i], LV_ALIGN_TOP_LEFT, 16, 50 + i * 68);
-        // The chart spans x 44..512, so the three ticks sit at its start,
+        // Each scale carries its curve's colour, so which number belongs to
+        // which line needs no looking up.
+        g_axis_flow[i] = make_label(&lv_font_montserrat_12, flow);
+        lv_obj_align(g_axis_flow[i], LV_ALIGN_TOP_LEFT, 16, 50 + i * 68);
+
+        g_axis_weight[i] = make_label(&lv_font_montserrat_12, mass);
+        lv_obj_align(g_axis_weight[i], LV_ALIGN_TOP_LEFT, 476, 50 + i * 68);
+
+        // The chart spans x 44..468, so the three ticks sit at its start,
         // middle and end rather than on an arbitrary grid.
         g_axis_x[i] = make_label(&lv_font_montserrat_12, muted);
-        lv_obj_align(g_axis_x[i], LV_ALIGN_TOP_LEFT, 40 + i * 232, 204);
+        lv_obj_align(g_axis_x[i], LV_ALIGN_TOP_LEFT, 40 + i * 212, 204);
     }
 
     g_hint = make_label(&lv_font_montserrat_12, muted);
@@ -352,10 +368,14 @@ void shot_view_finish(int64_t elapsed_ms)
     snprintf(buffer, sizeof(buffer), "Schnitt %.2f g/s", average);
     lv_label_set_text(g_result_avg, buffer);
 
-    // Axis labels name values the curves actually reach.
+    // Both scales name values their own curve actually reaches, top, middle
+    // and bottom.
     for (int i = 0; i < 3; i++) {
         snprintf(buffer, sizeof(buffer), "%.1f", (g_max_flow_x100 / 100.0f) * (2 - i) / 2.0f);
-        lv_label_set_text(g_axis_y[i], buffer);
+        lv_label_set_text(g_axis_flow[i], buffer);
+
+        snprintf(buffer, sizeof(buffer), "%.0f", (g_max_weight_x10 / 10.0f) * (2 - i) / 2.0f);
+        lv_label_set_text(g_axis_weight[i], buffer);
 
         snprintf(buffer, sizeof(buffer), "%.0f", seconds * i / 2.0f);
         lv_label_set_text(g_axis_x[i], buffer);
