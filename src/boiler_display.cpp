@@ -77,6 +77,17 @@ void boiler_display_init(void) {
     g_boilers[BOILER_STEAM].state = BOILER_STATE_OFF;
     g_boilers[BOILER_STEAM].last_remaining_sec = -1;
     
+    // SquareLine gave both temperature labels a fixed width that fits "95C"
+    // and not much more: a three digit steam temperature wrapped, leaving the
+    // degree sign on one line and the C on the next. Letting them grow to their
+    // text keeps them centred on the same point and fits any value.
+    lv_obj_t *temp_labels[] = {ui_CoffeeTempLabel, ui_BoilerTempLabel};
+    for (lv_obj_t *label : temp_labels) {
+        if (!label) continue;
+        lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
+        lv_obj_set_width(label, LV_SIZE_CONTENT);
+    }
+
     // Set both boilers to OFF state initially
     set_boiler_off(&g_boilers[BOILER_COFFEE]);
     set_boiler_off(&g_boilers[BOILER_STEAM]);

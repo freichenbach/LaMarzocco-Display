@@ -256,6 +256,9 @@ void shot_view_start(void)
         return;
     }
 
+    // The result view shrinks the chart to the samples the shot actually
+    // produced, so give it its full capacity back before filling it again.
+    lv_chart_set_point_count(g_chart, SHOT_CHART_POINTS);
     lv_chart_set_all_value(g_chart, g_series_flow, LV_CHART_POINT_NONE);
     lv_chart_set_all_value(g_chart, g_series_weight, LV_CHART_POINT_NONE);
     g_point_index = 0;
@@ -360,6 +363,13 @@ void shot_view_finish(int64_t elapsed_ms)
 
     lv_chart_set_range(g_chart, LV_CHART_AXIS_PRIMARY_Y, 0, g_max_flow_x100);
     lv_chart_set_range(g_chart, LV_CHART_AXIS_SECONDARY_Y, 0, g_max_weight_x10);
+
+    // The chart is built to hold a minute of brewing. A shot of ten seconds
+    // fills a sixth of it, and the curves were drawn into that sixth while the
+    // time labels underneath still spanned the whole width - so the axis said
+    // one thing and the picture another. Cutting the chart down to the samples
+    // that exist spreads them over the full width, where the labels are.
+    lv_chart_set_point_count(g_chart, g_point_index < 2 ? 2 : g_point_index);
 
     g_showing_result = true;
     layout_result();
