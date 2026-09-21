@@ -19,7 +19,6 @@
 #include "machine_actions.h"
 #include "scale_ble.h"
 #include "wifi_power.h"
-#include "shot_log.h"
 
 Preferences preferences;
 LaMarzoccoClient* g_client = nullptr;
@@ -476,10 +475,6 @@ void setup()
 
   updateSerialLoggingPowerState(true);
 
-  // Before anything else that logs: prints what the previous run recorded,
-  // including why it ended, and starts a fresh record for this one.
-  shot_log_begin();
-
   activity_monitor_init(USER_INACTIVITY_TIMEOUT_MS, MACHINE_INACTIVITY_TIMEOUT_MS);
 
   gui_mutex = xSemaphoreCreateMutex();
@@ -536,7 +531,6 @@ void setup()
 void loop()
 {
   servicePortalRequest();   // starts the setup portal when the UI asked for it
-  shot_log_flush();         // writes what the LVGL task logged during a shot
   retryWiFiIfPending();     // keeps trying the configured network after a failed start
   scale_ble_loop();         // finds and reconnects the BOOKOO scale
   machine_actions_process();  // runs power/steam requests from the UI buttons
