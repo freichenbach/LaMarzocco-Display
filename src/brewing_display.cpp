@@ -140,13 +140,11 @@ static void start_brewing(int64_t start_time) {
     // brewing timer.
     g_scale_mode = shot_view_available();
     if (g_scale_mode) {
-#if SCALE_AUTO_TARE
-        // Zero the scale and start its own timer in one command, so the cup
-        // already on the tray does not count towards the shot.
-        if (!scale_ble_send(bookoo::Command::TareAndStartTimer)) {
-            Serial.println("[Brewing] Could not tare the scale");
-        }
-#endif
+        // The scale tares itself when it detects the shot. Sending a tare from
+        // here as well arrives too late: the cloud has to report the start and
+        // the command has to travel back over Bluetooth, and by then the first
+        // drops are already in the cup. Zeroing at that point does not remove
+        // the cup, it removes coffee.
         shot_view_start();
     }
 

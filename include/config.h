@@ -56,9 +56,6 @@ static constexpr const char *NTP_SERVER = "pool.ntp.org";
 #define SCALE_SCAN_INTERVAL_MS  (30UL * 1000UL)
 #define SCALE_READING_STALE_MS  3000
 
-// Tare the scale when the machine reports the start of a shot, so the cup on
-// the drip tray does not count. Requires the cup to be in place beforehand.
-#define SCALE_AUTO_TARE  1
 
 // Shot view: one chart point per interval, so the points cover
 // SHOT_CHART_POINTS * SHOT_SAMPLE_INTERVAL_MS of brewing.

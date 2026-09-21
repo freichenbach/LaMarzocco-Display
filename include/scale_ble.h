@@ -22,5 +22,7 @@ bool scale_ble_is_connected(void);
 // been received yet.
 bool scale_ble_last_reading(bookoo::Reading &out, uint32_t &age_ms);
 
-// Sends a command to the scale, e.g. taring before a shot.
+// Sends a command to the scale. Nothing calls this during a shot - the scale
+// handles taring and its own timer by itself - but the channel is here for
+// commands that have to come from the display.
 bool scale_ble_send(bookoo::Command command, int value = 0);
