@@ -56,6 +56,22 @@ static constexpr const char *NTP_SERVER = "pool.ntp.org";
 #define SCALE_SCAN_INTERVAL_MS  (30UL * 1000UL)
 #define SCALE_READING_STALE_MS  3000
 
+// Tare the scale when the machine reports the start of a shot, so the cup on
+// the drip tray does not count. Requires the cup to be in place beforehand.
+#define SCALE_AUTO_TARE  1
+
+// Shot view: one chart point per interval, so the points cover
+// SHOT_CHART_POINTS * SHOT_SAMPLE_INTERVAL_MS of brewing.
+#define SHOT_SAMPLE_INTERVAL_MS  500
+#define SHOT_CHART_POINTS  120
+#define SHOT_RESULT_MS  (15UL * 1000UL)
+
+#define SHOT_VIEW_BG_COLOR  0xF2F4F7
+#define SHOT_VIEW_INK_COLOR  0x101418
+#define SHOT_VIEW_MUTED_COLOR  0x6B7684
+#define SHOT_FLOW_COLOR  0x4040FF
+#define SHOT_WEIGHT_COLOR  0xB06A00
+
 // Boiler arcs: heating up, and ready.
 #define BOILER_ARC_COLOR_HEATING  0x4040FF
 #define BOILER_ARC_COLOR_READY    0x2FBF4F

@@ -126,6 +126,13 @@ A BOOKOO Themis scale can be read over BLE, and the weight is shown under the
 shot timer while brewing. The device scans for a peripheral whose name starts
 with `BOOKOO`, subscribes to its weight notifications and reconnects on its own.
 
+While a shot runs, the display shows the time and the weight side by side with
+the flow underneath; when it ends, the flow and weight curves replace the usual
+flash of the final time for `SHOT_RESULT_MS`, or until the screen is tapped.
+Without a scale - or if one drops out mid shot - the plain timer is shown
+exactly as before. `SCALE_AUTO_TARE` zeroes the scale when the machine reports
+the start of a shot, which assumes the cup is already on the tray.
+
 Bluetooth and WiFi share one radio on the ESP32-S3, so this costs some of the
 WiFi budget. On a marginal link, set `SCALE_BLE_ENABLED` to 0 in
 `include/config.h` to give the radio back.

@@ -1,5 +1,6 @@
 #include "brewing_display.h"
 #include "scale_ble.h"
+#include "shot_view.h"
 #include "water_alarm.h"
 #include "config.h"
 #include "ui/ui.h"
@@ -24,7 +25,8 @@
 typedef enum {
     BREWING_STATE_IDLE = 0,      // Not brewing
     BREWING_STATE_ACTIVE = 1,    // Currently brewing
-    BREWING_STATE_FLASHING = 2   // Flashing final time after brewing stops
+    BREWING_STATE_FLASHING = 2,  // Flashing final time after brewing stops
+    BREWING_STATE_RESULT = 3     // Scale connected: showing the curves after the shot
 } BrewingState;
 
 // Global variables
@@ -32,6 +34,8 @@ static bool g_initialized = false;
 static BrewingState g_state = BREWING_STATE_IDLE;
 static int64_t g_brewing_start_time = 0;
 static int g_final_seconds = 0;  // Final seconds value to flash
+static bool g_scale_mode = false;      // this shot is being weighed
+static unsigned long g_result_start_ms = 0;
 static lv_timer_t* g_update_timer = NULL;
 static bool g_timer_paused = true;
 static SemaphoreHandle_t g_gui_mutex = NULL;
@@ -110,6 +114,7 @@ void brewing_display_init(void) {
     g_state = BREWING_STATE_IDLE;
     g_brewing_start_time = 0;
     g_final_seconds = 0;
+    shot_view_init();
     brewing_debugln("[Brewing] Initialization complete");
 }
 
@@ -126,6 +131,20 @@ static void start_brewing(int64_t start_time) {
     }
     
     brewing_debugln("[Brewing] ===== STARTING BREWING MODE =====");
+    // Decided once per shot: a scale that drops out later falls back to the
+    // plain timer, but the view does not flip back and forth mid shot.
+    g_scale_mode = shot_view_available();
+    if (g_scale_mode) {
+#if SCALE_AUTO_TARE
+        // Zero the scale and start its own timer in one command, so the cup
+        // already on the tray does not count towards the shot.
+        if (!scale_ble_send(bookoo::Command::TareAndStartTimer)) {
+            Serial.println("[Brewing] Could not tare the scale");
+        }
+#endif
+        shot_view_start();
+    }
+
     g_state = BREWING_STATE_ACTIVE;
     g_brewing_start_time = start_time;
     g_final_seconds = 0;
@@ -155,10 +174,12 @@ static void stop_brewing(void) {
     brewing_debugln("[Brewing] ===== STOPPING BREWING MODE =====");
     
     // Capture final seconds value for flashing
+    int64_t final_elapsed_ms = 0;
     if (g_brewing_start_time > 0) {
         int64_t now_ms = brewing_display_get_current_time_ms();
         int64_t elapsed_ms = now_ms - g_brewing_start_time;
         if (elapsed_ms > 0) {
+            final_elapsed_ms = elapsed_ms;
             g_final_seconds = (int)(elapsed_ms / 1000);
         } else {
             g_final_seconds = 0;
@@ -170,6 +191,16 @@ static void stop_brewing(void) {
     brewing_debug("[Brewing] Final seconds to flash: ");
     brewing_debugln(g_final_seconds);
     
+    if (g_scale_mode) {
+        // The curves replace the three second flash of the final time. The
+        // result keeps the tenth of a second the flash view rounds away.
+        shot_view_finish(final_elapsed_ms);
+        g_state = BREWING_STATE_RESULT;
+        g_result_start_ms = millis();
+        g_brewing_start_time = 0;
+        return;
+    }
+
     // Transition to flashing state
     g_state = BREWING_STATE_FLASHING;
     g_flash_start_time = millis();
@@ -275,7 +306,39 @@ void brewing_display_timer_callback(lv_timer_t* timer) {
                     }
                     break;
                 }
+                if (g_scale_mode) {
+                    if (!shot_view_available()) {
+                        // The scale went quiet mid shot. Drop back to the plain
+                        // timer rather than freezing a stale weight on screen.
+                        Serial.println("[Brewing] Scale stopped reporting - back to the plain timer");
+                        g_scale_mode = false;
+                        shot_view_hide();
+                        if (ui_SecPanel) lv_obj_clear_flag(ui_SecPanel, LV_OBJ_FLAG_HIDDEN);
+                        if (ui_SecValueLabel) lv_obj_clear_flag(ui_SecValueLabel, LV_OBJ_FLAG_HIDDEN);
+                    } else {
+                        shot_view_tick(now_ms - g_brewing_start_time);
+                        break;
+                    }
+                }
                 update_elapsed_time_display();
+            }
+            break;
+
+        case BREWING_STATE_RESULT:
+            {
+                bool tapped = shot_view_take_dismiss_request();
+                if (tapped || (millis() - g_result_start_ms) >= SHOT_RESULT_MS) {
+                    brewing_debugln("[Brewing] Closing the shot result");
+                    shot_view_hide();
+                    g_scale_mode = false;
+                    g_state = BREWING_STATE_IDLE;
+                    g_final_seconds = 0;
+                    restore_normal_ui_no_mutex();
+                    if (g_update_timer && !g_timer_paused) {
+                        lv_timer_pause(g_update_timer);
+                        g_timer_paused = true;
+                    }
+                }
             }
             break;
             
@@ -345,52 +408,7 @@ void brewing_display_timer_callback(lv_timer_t* timer) {
  * the LVGL task context where the mutex is already held. Do NOT take the mutex here.
  * Optimized: Only updates text if value changed to reduce unnecessary redraws.
  */
-// Shown under the shot timer while a scale is connected. Created here rather
-// than in the generated screen code, so a re-export from SquareLine Studio does
-// not drop it.
-static lv_obj_t* g_weight_label = nullptr;
-
-static void update_weight_display(void) {
-    if (!ui_SecValueLabel) {
-        return;
-    }
-
-    bookoo::Reading reading;
-    uint32_t age_ms = 0;
-    // A scale that stopped sending should not leave a stale number standing.
-    bool show = scale_ble_is_connected() &&
-                scale_ble_last_reading(reading, age_ms) &&
-                age_ms < SCALE_READING_STALE_MS;
-
-    if (!show) {
-        if (g_weight_label) {
-            lv_obj_add_flag(g_weight_label, LV_OBJ_FLAG_HIDDEN);
-        }
-        return;
-    }
-
-    if (!g_weight_label) {
-        g_weight_label = lv_label_create(lv_obj_get_parent(ui_SecValueLabel));
-        lv_obj_set_style_text_font(g_weight_label, &lv_font_montserrat_22,
-                                   LV_PART_MAIN | LV_STATE_DEFAULT);
-    }
-
-    static char last_weight_str[16] = "";
-    char weight_str[16];
-    snprintf(weight_str, sizeof(weight_str), "%.1f g", reading.weight_g);
-
-    if (strcmp(weight_str, last_weight_str) != 0) {
-        strncpy(last_weight_str, weight_str, sizeof(last_weight_str) - 1);
-        lv_label_set_text(g_weight_label, weight_str);
-    }
-    lv_obj_align_to(g_weight_label, ui_SecValueLabel, LV_ALIGN_OUT_BOTTOM_MID, 0, 4);
-    lv_obj_clear_flag(g_weight_label, LV_OBJ_FLAG_HIDDEN);
-}
-
 static void update_elapsed_time_display(void) {
-    // Runs in the LVGL timer, so the label can be touched directly.
-    update_weight_display();
-
     if (g_brewing_start_time <= 0) {
         return;
     }
@@ -512,9 +530,8 @@ static void show_brewing_ui(void) {
  * Hide brewing UI elements
  */
 static void hide_brewing_ui(void) {
-    if (g_weight_label) {
-        lv_obj_add_flag(g_weight_label, LV_OBJ_FLAG_HIDDEN);
-    }
+    shot_view_hide();
+    g_scale_mode = false;
 
     TAKE_MUTEX() {
         if (ui_SecPanel) {
