@@ -510,6 +510,7 @@ void loop()
     display_dimmed = false;
   }
 
+#if DEEP_SLEEP_ENABLED
   bool user_inactive = activity_monitor_is_user_inactive(now);
   bool machine_inactive = activity_monitor_is_machine_inactive(now);
   if (user_inactive && machine_inactive) {
@@ -517,6 +518,7 @@ void loop()
     Serial.println("user + machine");
     enterDeepSleep();
   }
+#endif
   // Check if BOOT button (GPIO 0) is held down to turn OFF
     // (GPIO 0 is LOW when pressed)
     if (digitalRead(0) == LOW) {

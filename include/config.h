@@ -26,6 +26,20 @@ static constexpr const char *NTP_SERVER = "pool.ntp.org";
 // that pin; enable with -D BREWING_SIM_ENABLED.
 #define  BREWING_SIM_PIN 15  // GPIO 15 for brewing simulation mode (LOW = brewing, HIGH = normal)
 
+// Deep sleep saves battery, but this board cannot tell whether it is on battery
+// at all, so a device on a power supply simply switches itself off overnight and
+// has to be woken with the BOOT button. Off by default; set to 1 for battery use.
+#define DEEP_SLEEP_ENABLED  0
+
+// The brewing timer is started and stopped by cloud messages. If the stop never
+// arrives - a dropped connection, a lost message - the timer would run forever.
+// After this long it clears itself.
+#define BREWING_MAX_SECONDS  180
+
+// Boiler arcs: heating up, and ready.
+#define BOILER_ARC_COLOR_HEATING  0x4040FF
+#define BOILER_ARC_COLOR_READY    0x2FBF4F
+
 #define USER_INACTIVITY_TIMEOUT_MS  (360UL * 60UL * 1000UL)
 #define MACHINE_INACTIVITY_TIMEOUT_MS  (360UL * 60UL * 1000UL)
 #define USER_DIM_TIMEOUT_MS  (10UL * 60UL * 1000UL)

@@ -1,4 +1,5 @@
 #include "boiler_display.h"
+#include "config.h"
 #include "brewing_display.h"
 #include "water_alarm.h"  // Need to check water alarm state
 #include "ui/ui.h"
@@ -33,6 +34,7 @@ static void set_boiler_off(BoilerInfo* boiler);
 static void set_boiler_heating(BoilerInfo* boiler, int64_t ready_start_time);
 static void set_boiler_ready(BoilerInfo* boiler);
 static void set_boiler_ready_no_mutex(BoilerInfo* boiler);  // Internal version without mutex
+static void set_arc_color(BoilerInfo* boiler, uint32_t color);
 static void restart_update_timer(void);
 static const char* boiler_type_name(BoilerType type);
 
@@ -525,6 +527,7 @@ static void set_boiler_heating(BoilerInfo* boiler, int64_t ready_start_time) {
     if (!boiler || !boiler->arc || !boiler->label) return;
     
     boiler->state = BOILER_STATE_HEATING;
+    set_arc_color(boiler, BOILER_ARC_COLOR_HEATING);
     boiler->ready_start_time = ready_start_time;
     boiler->last_remaining_sec = -1;  // Force update on next call
     
@@ -545,6 +548,20 @@ static void set_boiler_heating(BoilerInfo* boiler, int64_t ready_start_time) {
  * Set boiler to READY state (internal version without mutex)
  * MUST be called from within LVGL task or with mutex already held
  */
+// The arc colour carries the state at a glance: blue while heating, green once
+// the boiler is ready. Set here rather than in the generated screen code, so a
+// re-export from SquareLine Studio does not drop it.
+static void set_arc_color(BoilerInfo* boiler, uint32_t color)
+{
+    if (!boiler || !boiler->arc) {
+        return;
+    }
+    lv_obj_set_style_arc_color(boiler->arc, lv_color_hex(color),
+                               LV_PART_INDICATOR | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(boiler->arc, lv_color_hex(color),
+                              LV_PART_KNOB | LV_STATE_DEFAULT);
+}
+
 static void set_boiler_ready_no_mutex(BoilerInfo* boiler) {
     if (!boiler || !boiler->arc || !boiler->label) {
         boiler_debug("[");
@@ -555,6 +572,7 @@ static void set_boiler_ready_no_mutex(BoilerInfo* boiler) {
     
     boiler->state = BOILER_STATE_READY;
     boiler->last_remaining_sec = -1;
+    set_arc_color(boiler, BOILER_ARC_COLOR_READY);
     
     // Check if brewing OR water alarm is active - if so, keep arcs and labels hidden
     bool brewing_active = brewing_display_is_active();

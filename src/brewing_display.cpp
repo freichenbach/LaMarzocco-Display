@@ -254,8 +254,28 @@ void brewing_display_timer_callback(lv_timer_t* timer) {
     
     switch (g_state) {
         case BREWING_STATE_ACTIVE:
-            // Update elapsed time during brewing
-            update_elapsed_time_display();
+            {
+                // The stop comes from the cloud. If it never arrives, the timer
+                // would keep counting for ever and the display would be stuck
+                // showing a shot that finished long ago.
+                int64_t now_ms = brewing_display_get_current_time_ms();
+                if (g_brewing_start_time > 0 &&
+                    (now_ms - g_brewing_start_time) > (int64_t)BREWING_MAX_SECONDS * 1000) {
+                    Serial.println("[Brewing] No stop message arrived within the maximum "
+                                   "duration - clearing the timer");
+                    g_state = BREWING_STATE_IDLE;
+                    g_final_seconds = 0;
+                    g_brewing_start_time = 0;
+                    // Already inside the LVGL task with the mutex held.
+                    restore_normal_ui_no_mutex();
+                    if (g_update_timer && !g_timer_paused) {
+                        lv_timer_pause(g_update_timer);
+                        g_timer_paused = true;
+                    }
+                    break;
+                }
+                update_elapsed_time_display();
+            }
             break;
             
         case BREWING_STATE_FLASHING:
