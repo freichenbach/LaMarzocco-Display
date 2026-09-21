@@ -36,6 +36,18 @@ static constexpr const char *NTP_SERVER = "pool.ntp.org";
 // After this long it clears itself.
 #define BREWING_MAX_SECONDS  180
 
+// How often the full machine state is fetched over REST. The WebSocket only
+// pushes on change, so this bounds how stale the display can get when a message
+// is lost. 0 disables it.
+#define DASHBOARD_REFRESH_INTERVAL_MS  (5UL * 60UL * 1000UL)
+
+// Steam boiler: the Micra reports a level, not a temperature. These are the
+// approximate temperatures the official app shows for Level1/2/3.
+#define STEAM_LEVEL_AS_TEMPERATURE  1
+#define STEAM_TEMP_LEVEL1  126
+#define STEAM_TEMP_LEVEL2  128
+#define STEAM_TEMP_LEVEL3  131
+
 // Boiler arcs: heating up, and ready.
 #define BOILER_ARC_COLOR_HEATING  0x4040FF
 #define BOILER_ARC_COLOR_READY    0x2FBF4F

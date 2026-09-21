@@ -40,6 +40,15 @@ void LaMarzoccoMachine::_websocket_message_handler(const String& message) {
         }
         
         Serial.println("✓ JSON parsed successfully");
+        _process_dashboard(doc);
+    }
+}
+
+// Shared by the WebSocket push and the periodic REST poll: both deliver the same
+// "widgets" array, so the display is driven from one place regardless of which
+// route the state arrived on.
+void LaMarzoccoMachine::_process_dashboard(JsonDocument& doc) {
+    if (_instance) {
         
         // Variables to store extracted data
         const char* machine_status = nullptr;
@@ -207,6 +216,20 @@ void LaMarzoccoMachine::_websocket_message_handler(const String& message) {
             }
             
             if (steam_target_level) {
+#if STEAM_LEVEL_AS_TEMPERATURE
+                // This machine reports a level for the steam boiler, never a
+                // temperature - CMSteamBoilerTemperature is not among its
+                // widgets. These are the temperatures the official app shows
+                // for the three levels.
+                int steam_temp = 0;
+                if (strcmp(steam_target_level, "Level1") == 0)      steam_temp = STEAM_TEMP_LEVEL1;
+                else if (strcmp(steam_target_level, "Level2") == 0) steam_temp = STEAM_TEMP_LEVEL2;
+                else if (strcmp(steam_target_level, "Level3") == 0) steam_temp = STEAM_TEMP_LEVEL3;
+
+                if (steam_temp > 0) {
+                    snprintf(steam_level_str, sizeof(steam_level_str), "%d°C", steam_temp);
+                } else
+#endif
                 // Convert "Level2" to "L2", "Level1" to "L1", etc.
                 if (strncmp(steam_target_level, "Level", 5) == 0) {
                     snprintf(steam_level_str, sizeof(steam_level_str), "L%s", steam_target_level + 5);
@@ -370,6 +393,17 @@ void LaMarzoccoMachine::loop() {
         }
     }
 
+    // The cloud only pushes on change, so a display that missed a message stays
+    // wrong until the next one - which on a standby machine can be hours away.
+    // Fetching the state on a timer bounds how stale it can get.
+    if (is_websocket_connected() && DASHBOARD_REFRESH_INTERVAL_MS > 0) {
+        unsigned long now = millis();
+        if (now - _last_dashboard_refresh_ms >= DASHBOARD_REFRESH_INTERVAL_MS) {
+            _last_dashboard_refresh_ms = now;
+            refresh_dashboard();
+        }
+    }
+
     // Auto-reconnect logic: If disconnected, try to reconnect periodically
     // This ensures we get a fresh access token instead of reusing an expired one
     static unsigned long last_reconnect_attempt = 0;
@@ -387,6 +421,29 @@ void LaMarzoccoMachine::loop() {
 
 void LaMarzoccoMachine::request_stats_refresh() {
     _stats_refresh_pending = true;
+}
+
+bool LaMarzoccoMachine::refresh_dashboard() {
+    String serial = _client.get_serial_number();
+    if (serial.length() == 0) {
+        return false;
+    }
+
+    JsonDocument response;
+    String endpoint = "/things/" + serial + "/dashboard";
+    if (!_client.api_call("GET", endpoint, nullptr, &response)) {
+        Serial.println("[REFRESH] Could not fetch the dashboard");
+        return false;
+    }
+
+    if (!response.containsKey("widgets")) {
+        Serial.println("[REFRESH] Dashboard response carried no widgets");
+        return false;
+    }
+
+    Serial.println("[REFRESH] Dashboard fetched over REST");
+    _process_dashboard(response);
+    return true;
 }
 
 void LaMarzoccoMachine::_refresh_shot_counters() {

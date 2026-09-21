@@ -45,6 +45,11 @@ public:
 
     // Request a refresh of coffee/flush counters
     void request_stats_refresh();
+
+    // Fetch the full machine state over REST. The WebSocket only pushes on
+    // change, so without this the display keeps whatever it last heard - and a
+    // message lost on a weak link is never made good.
+    bool refresh_dashboard();
     
 private:
     LaMarzoccoClient& _client;
@@ -54,9 +59,11 @@ private:
     bool _status_reported = false;
     bool _stats_refresh_pending = false;
     unsigned long _last_stats_refresh_ms = 0;
+    unsigned long _last_dashboard_refresh_ms = 0;
     
     // WebSocket message handler
     static void _websocket_message_handler(const String& message);
+    static void _process_dashboard(JsonDocument& doc);
     static LaMarzoccoMachine* _instance;
 
     void _refresh_shot_counters();
