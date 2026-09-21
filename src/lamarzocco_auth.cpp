@@ -1,4 +1,6 @@
 #include "lamarzocco_auth.h"
+#include "lamarzocco_tls.h"
+#include <time.h>
 #include <WiFi.h>
 #include <esp_random.h>
 #include <string.h>
@@ -221,8 +223,20 @@ void LaMarzoccoAuth::generate_extra_request_headers(const InstallationKey& key, 
         return;
     }
     
-    // Timestamp in milliseconds
-    timestamp = String((unsigned long)millis());
+    // Unix time in milliseconds, which is what the La Marzocco clients send.
+    // This used to be millis(): the server accepts that today, but it restarts
+    // near zero after every reboot and wraps after 49 days, so anything that
+    // checks the timestamp against real time would reject it.
+    time_t now_s = time(nullptr);
+    if (now_s >= LM_MIN_VALID_EPOCH) {
+        char ts_buf[24];
+        snprintf(ts_buf, sizeof(ts_buf), "%lld", (long long)now_s * 1000LL);
+        timestamp = ts_buf;
+    } else {
+        // Clock not set yet. Keep the old behaviour rather than sending a
+        // timestamp from 1970, which is further from the truth.
+        timestamp = String((unsigned long)millis());
+    }
     
     // Build strings more efficiently to avoid stack overflow
     String proof_input;
