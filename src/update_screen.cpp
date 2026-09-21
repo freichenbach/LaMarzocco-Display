@@ -263,6 +263,9 @@ static const unsigned long WIFI_CONNECT_TIMEOUT = 15000;     // 15 seconds to wa
 static const int MAX_RECONNECT_ATTEMPTS = 5;                 // Maximum retry attempts
 static int reconnectAttempts = 0;
 static bool isReconnecting = false;
+// Set once the quick attempts are through, so the notice on screen is written
+// once and the retries carry on quietly behind it.
+static bool slowRetryMode = false;
 static bool waitingForConnection = false;
 
 void checkWiFiConnection(void)
@@ -277,6 +280,7 @@ void checkWiFiConnection(void)
             isReconnecting = false;
             waitingForConnection = false;
             reconnectAttempts = 0;
+            slowRetryMode = false;
         }
         wasConnected = true;
         return;
@@ -300,21 +304,22 @@ void checkWiFiConnection(void)
                 Serial.println("⏱ Connection timeout");
                 waitingForConnection = false;
                 
-                // Check if we've exhausted all retry attempts
+                // The quick attempts are through. That is not a reason to stop:
+                // the access point may be rebooting, and this machine may well
+                // stand at the edge of its range. Say so on screen once, then
+                // keep trying at a calmer pace for as long as the device is on.
                 if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-                    Serial.println("❌ All reconnection attempts failed!");
-                    Serial.println("Showing NoConnectionScreen...");
-                    
-                    isReconnecting = false;
+                    if (!slowRetryMode) {
+                        slowRetryMode = true;
+                        Serial.println("❌ Quick reconnects failed, slowing down but still trying");
+                        showNoConnectionScreen(
+                            "WiFi Connection Lost!\n"
+                            "Reconnecting..."
+                        );
+                    }
+
                     reconnectAttempts = 0;
-                    wasConnected = false;
-                    
-                    showNoConnectionScreen(
-                        "WiFi Connection Lost!\n"
-                        "Failed to reconnect\n"
-                        "after 5 attempts.\n"
-                        "Please restart WiFi"
-                    );
+                    waitUntilTime = currentMillis + WIFI_RETRY_INTERVAL_MS;
                 } else {
                     // Schedule next attempt in 30 seconds
                     waitUntilTime = currentMillis + WIFI_RECONNECT_DELAY;

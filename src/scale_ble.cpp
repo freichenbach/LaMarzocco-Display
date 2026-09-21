@@ -1,5 +1,6 @@
 #include "scale_ble.h"
 #include "config.h"
+#include "wifi_power.h"
 
 #include <Arduino.h>
 
@@ -126,6 +127,12 @@ bool connect_to_scale()
 void scale_ble_begin(void)
 {
     Serial.println("[SCALE] Starting Bluetooth for the scale");
+    // WiFi and Bluetooth share one radio, and the software that interleaves
+    // them refuses to start while WiFi is told never to sleep - enabling the
+    // Bluetooth controller then aborts in coex_core_enable and the board
+    // reboots. Settle the power save mode here, right before the controller
+    // comes up, whoever set it last.
+    wifi_apply_power_save();
     NimBLEDevice::init("");
     NimBLEDevice::setPower(ESP_PWR_LVL_P9);
     start_scan();

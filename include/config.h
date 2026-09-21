@@ -98,6 +98,15 @@ static constexpr const char *NTP_SERVER = "pool.ntp.org";
 // Time to wait for the NTP sync that TLS certificate validation depends on
 #define TIME_SYNC_TIMEOUT_MS  (15UL * 1000UL)
 
+// Joining the configured network. A weak spot is a reason to keep trying, not
+// to ask for the network again, so startup runs several full association
+// rounds and the main loop keeps retrying afterwards for as long as the device
+// is on. The setup portal is only opened when the user asks for it on screen.
+#define WIFI_ATTEMPT_TIMEOUT_MS  (15UL * 1000UL)
+#define WIFI_STARTUP_ROUNDS  6
+#define WIFI_ROUND_PAUSE_MS  (5UL * 1000UL)
+#define WIFI_RETRY_INTERVAL_MS  (60UL * 1000UL)
+
 #define uS_TO_S_FACTOR 1000000ULL
 
 #endif

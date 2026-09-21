@@ -18,6 +18,7 @@
 #include "lamarzocco_tls.h"
 #include "machine_actions.h"
 #include "scale_ble.h"
+#include "wifi_power.h"
 
 Preferences preferences;
 LaMarzoccoClient* g_client = nullptr;
@@ -29,9 +30,15 @@ SemaphoreHandle_t gui_mutex;
 void Task_LVGL(void *pvParameters);
 void updateSerialLoggingPowerState(bool force);
 
-// WiFi connection variables
-const int MAX_WIFI_RETRIES = 10;
-const int WIFI_TIMEOUT_MS = 15000;
+// One association attempt is polled in ten steps, so the dots on the serial
+// log keep moving while it runs.
+const int WIFI_POLLS_PER_ATTEMPT = 10;
+
+// Set when startup could not reach the configured network. The main loop then
+// keeps retrying instead of the device sitting on the setup screen.
+static bool g_wifi_retry_pending = false;
+
+static void startCloudServices(void);
 
 static const char *authModeName(wifi_auth_mode_t mode)
 {
@@ -83,10 +90,10 @@ static void reportWiFiFailure(const String &ssid)
   WiFi.scanDelete();
 }
 
-bool connectToWiFi(const String &ssid, const String &password)
+// A single association attempt. Returns as soon as the network is joined, or
+// after WIFI_ATTEMPT_TIMEOUT_MS.
+static bool attemptWiFiConnect(const String &ssid, const String &password)
 {
-  debugln("Attempting to connect to WiFi...");
-
   static bool disconnect_logging_registered = false;
   if (!disconnect_logging_registered) {
     WiFi.onEvent(logWiFiDisconnect);
@@ -103,13 +110,12 @@ bool connectToWiFi(const String &ssid, const String &password)
   WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
 
   WiFi.begin(ssid.c_str(), password.c_str());
-  WiFi.setSleep(false);
-  int retries = 0;
-  while (WiFi.status() != WL_CONNECTED && retries < MAX_WIFI_RETRIES)
+  wifi_apply_power_save();
+
+  for (int poll = 0; poll < WIFI_POLLS_PER_ATTEMPT && WiFi.status() != WL_CONNECTED; poll++)
   {
-    delay(WIFI_TIMEOUT_MS / MAX_WIFI_RETRIES);
+    delay(WIFI_ATTEMPT_TIMEOUT_MS / WIFI_POLLS_PER_ATTEMPT);
     debug(".");
-    retries++;
   }
 
   if (WiFi.status() == WL_CONNECTED)
@@ -124,14 +130,81 @@ bool connectToWiFi(const String &ssid, const String &password)
                   WiFi.BSSIDstr().c_str(), (int)WiFi.channel(), (int)WiFi.RSSI());
     return true;
   }
-  else
+
+  debugln("");
+  // Drop the half finished attempt, otherwise the next WiFi.begin() inherits
+  // its state and the driver skips the fresh scan.
+  WiFi.disconnect(false, true);
+  return false;
+}
+
+bool connectToWiFi(const String &ssid, const String &password)
+{
+  debugln("Attempting to connect to WiFi...");
+
+  for (int round = 1; round <= WIFI_STARTUP_ROUNDS; round++)
   {
-    debugln("");
-    debugln("Failed to connect to WiFi");
-    WiFi.disconnect();
-    reportWiFiFailure(ssid);
-    return false;
+    if (attemptWiFiConnect(ssid, password))
+    {
+      return true;
+    }
+
+    Serial.printf("[WIFI] Round %d of %d could not join '%s'\n",
+                  round, WIFI_STARTUP_ROUNDS, ssid.c_str());
+
+    if (round < WIFI_STARTUP_ROUNDS)
+    {
+      delay(WIFI_ROUND_PAUSE_MS);
+    }
   }
+
+  debugln("Failed to connect to WiFi");
+  // Once, after the rounds are through: which networks are in range, and
+  // whether the configured one is among them.
+  reportWiFiFailure(ssid);
+  return false;
+}
+
+// Keeps trying the configured network after a failed startup. A poor spot is
+// not a reason to ask for the credentials again - they are almost certainly
+// right, and the access point may simply have been off. The setup portal stays
+// one button press away on the screen that is showing.
+static void retryWiFiIfPending(void)
+{
+  if (!g_wifi_retry_pending || WiFi.status() == WL_CONNECTED || isPortalRunning())
+  {
+    return;
+  }
+
+  static unsigned long last_attempt = 0;
+  unsigned long now = millis();
+  if (last_attempt != 0 && now - last_attempt < WIFI_RETRY_INTERVAL_MS)
+  {
+    return;
+  }
+  last_attempt = now;
+
+  String ssid = preferences.getString("SSID", "");
+  String pass = preferences.getString("PASS", "");
+  if (ssid == "" || pass == "")
+  {
+    g_wifi_retry_pending = false;
+    return;
+  }
+
+  Serial.println("[WIFI] Retrying the configured network");
+  if (!attemptWiFiConnect(ssid, pass))
+  {
+    return;
+  }
+
+  g_wifi_retry_pending = false;
+  if (xSemaphoreTake(gui_mutex, portMAX_DELAY) == pdTRUE)
+  {
+    lv_disp_load_scr(ui_mainScreen);
+    xSemaphoreGive(gui_mutex);
+  }
+  startCloudServices();
 }
 
 // LilyGo_AMOLED::isVbusIn() is only implemented for the board variants that
@@ -204,6 +277,161 @@ void enterDeepSleep() {
     
     // 5. Enter Deep Sleep
     esp_deep_sleep_start();
+}
+
+// Everything that needs the network: clock, sign in, websocket, scale. Called
+// from setup() once WiFi is up, and from the retry in loop() when the network
+// only became reachable later.
+static void startCloudServices(void)
+{
+  // NTP only starts syncing once WiFi is up. The TLS handshake with the
+  // cloud checks the certificate dates, so wait for a valid clock before
+  // the first request instead of failing verification on a 1970 date.
+  configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
+  if (lm_tls_wait_for_clock(TIME_SYNC_TIMEOUT_MS)) {
+    debugln("Clock synchronized via NTP");
+  } else {
+    Serial.println("[TLS] NTP sync timed out - certificate validation may fail");
+  }
+
+  // Initialize La Marzocco client
+  String email = preferences.getString("USER_EMAIL", "");
+  String password = preferences.getString("USER_PASS", "");
+  String machine_serial = preferences.getString("MACHINE", "");
+  
+  if (email.length() > 0 && password.length() > 0 && machine_serial.length() > 0) {
+    debugln("Initializing La Marzocco client...");
+    
+    // Check if installation key exists, if not generate it first
+    InstallationKey key;
+    if (!LaMarzoccoAuth::load_installation_key(preferences, key)) {
+      debugln("Generating installation key...");
+      
+      // Clear any partial keys that might exist (check before removing to avoid errors)
+      if (preferences.isKey("INSTALLATION_ID")) preferences.remove("INSTALLATION_ID");
+      if (preferences.isKey("INSTALLATION_SECRET")) preferences.remove("INSTALLATION_SECRET");
+      if (preferences.isKey("INSTALLATION_PRIVKEY")) preferences.remove("INSTALLATION_PRIVKEY");
+      if (preferences.isKey("INSTALLATION_PUBKEY")) preferences.remove("INSTALLATION_PUBKEY");
+      if (preferences.isKey("INSTALLATION_PRIVKEY_LEN")) preferences.remove("INSTALLATION_PRIVKEY_LEN");
+      if (preferences.isKey("INSTALLATION_PUBKEY_LEN")) preferences.remove("INSTALLATION_PUBKEY_LEN");
+      if (preferences.isKey("INST_ID")) preferences.remove("INST_ID");
+      if (preferences.isKey("INST_SECRET")) preferences.remove("INST_SECRET");
+      if (preferences.isKey("INST_PRIVKEY")) preferences.remove("INST_PRIVKEY");
+      if (preferences.isKey("INST_PUBKEY")) preferences.remove("INST_PUBKEY");
+      if (preferences.isKey("INST_PRIVLEN")) preferences.remove("INST_PRIVLEN");
+      if (preferences.isKey("INST_PUBLEN")) preferences.remove("INST_PUBLEN");
+      
+      String installation_id = LaMarzoccoAuth::generate_uuid();
+      if (LaMarzoccoAuth::generate_installation_key(installation_id, key)) {
+        if (LaMarzoccoAuth::save_installation_key(preferences, key)) {
+          debugln("Installation key generated and saved");
+        } else {
+          debugln("Failed to save installation key");
+        }
+      } else {
+        debugln("Failed to generate installation key");
+      }
+    } else {
+      debugln("Installation key found");
+    }
+    
+    g_client = new LaMarzoccoClient(preferences);
+    if (g_client->init(email, password, machine_serial)) {
+      // Register client if needed
+      debugln("Registering client...");
+      if (!g_client->register_client()) {
+        debugln("Registration failed - will retry on first API call");
+        // Note: Registration failures are not critical, will retry during API calls
+      }
+      
+      // Try to get access token (authenticate). A single attempt used to be
+      // enough to declare the credentials invalid and drop into the setup
+      // portal, so one timed out request during startup cost the whole
+      // session - and told the user their password was wrong.
+      bool authorized = false;
+      for (int attempt = 1; attempt <= AUTH_ATTEMPTS_AT_STARTUP; attempt++) {
+        authorized = g_client->get_access_token();
+        if (authorized) {
+          break;
+        }
+
+        int status = g_client->get_last_auth_status();
+        Serial.printf("[AUTH] Sign in attempt %d of %d failed, status %d\n",
+                      attempt, AUTH_ATTEMPTS_AT_STARTUP, status);
+
+        // A 4xx is the server answering that it rejected the credentials.
+        // Retrying cannot change that; anything else is worth another try.
+        if (status >= 400 && status < 500) {
+          break;
+        }
+        if (attempt < AUTH_ATTEMPTS_AT_STARTUP) {
+          delay(AUTH_RETRY_DELAY_MS);
+        }
+      }
+
+      if (!authorized) {
+        int status = g_client->get_last_auth_status();
+        if (status >= 400 && status < 500) {
+          debugln("Authorization failed - the server rejected the credentials");
+          showNoConnectionScreen(
+            "Authorization Failed!\n"
+            "Invalid credentials\n"
+            "Please restart WiFi Setup"
+          );
+
+          delete g_client;
+          g_client = nullptr;
+          setupWEB();
+        } else {
+          // The cloud could not be reached. The credentials may be perfectly
+          // fine, so keep the client: every later API call signs in again on
+          // its own, and the device recovers without being reconfigured.
+          Serial.println("[AUTH] Cloud unreachable at startup, will keep retrying");
+          showNoConnectionScreen(
+            "Cloud Unreachable!\n"
+            "Could not sign in\n"
+            "Retrying..."
+          );
+        }
+      } else {
+        // Initialize websocket and machine
+        g_websocket = new LaMarzoccoWebSocket(*g_client);
+        g_machine = new LaMarzoccoMachine(*g_client, *g_websocket);
+        
+        debugln("La Marzocco client initialized");
+
+        // Initial refresh of coffee/flush counters
+        g_machine->request_stats_refresh();
+
+        // Bluetooth comes up after WiFi so the radio is already settled.
+        scale_ble_begin();
+        
+        // Auto-connect WebSocket on startup
+        debugln("Auto-connecting to WebSocket...");
+        if (g_machine->connect_websocket()) {
+          debugln("✓ WebSocket connection initiated on startup");
+        } else {
+          debugln("✗ Failed to initiate WebSocket connection on startup");
+          // Note: WebSocket failures are not critical, will retry automatically
+        }
+      }
+    } else {
+      debugln("Failed to initialize La Marzocco client");
+      
+      showNoConnectionScreen(
+        "Client Init Failed!\n"
+        "Missing installation key\n"
+        "Please restart WiFi Setup"
+      );
+      
+      delete g_client;
+      g_client = nullptr;
+      setupWEB();
+    }
+  } else {
+    debugln("Missing La Marzocco credentials");
+    // Note: Missing credentials is expected on first run, no error message needed
+  }
 }
 
 void setup()
@@ -282,161 +510,20 @@ void setup()
     if (connectToWiFi(ssid, pass))
     {
       lv_disp_load_scr(ui_mainScreen);
-
-      // NTP only starts syncing once WiFi is up. The TLS handshake with the
-      // cloud checks the certificate dates, so wait for a valid clock before
-      // the first request instead of failing verification on a 1970 date.
-      configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
-      if (lm_tls_wait_for_clock(TIME_SYNC_TIMEOUT_MS)) {
-        debugln("Clock synchronized via NTP");
-      } else {
-        Serial.println("[TLS] NTP sync timed out - certificate validation may fail");
-      }
-
-      // Initialize La Marzocco client
-      String email = preferences.getString("USER_EMAIL", "");
-      String password = preferences.getString("USER_PASS", "");
-      String machine_serial = preferences.getString("MACHINE", "");
-      
-      if (email.length() > 0 && password.length() > 0 && machine_serial.length() > 0) {
-        debugln("Initializing La Marzocco client...");
-        
-        // Check if installation key exists, if not generate it first
-        InstallationKey key;
-        if (!LaMarzoccoAuth::load_installation_key(preferences, key)) {
-          debugln("Generating installation key...");
-          
-          // Clear any partial keys that might exist (check before removing to avoid errors)
-          if (preferences.isKey("INSTALLATION_ID")) preferences.remove("INSTALLATION_ID");
-          if (preferences.isKey("INSTALLATION_SECRET")) preferences.remove("INSTALLATION_SECRET");
-          if (preferences.isKey("INSTALLATION_PRIVKEY")) preferences.remove("INSTALLATION_PRIVKEY");
-          if (preferences.isKey("INSTALLATION_PUBKEY")) preferences.remove("INSTALLATION_PUBKEY");
-          if (preferences.isKey("INSTALLATION_PRIVKEY_LEN")) preferences.remove("INSTALLATION_PRIVKEY_LEN");
-          if (preferences.isKey("INSTALLATION_PUBKEY_LEN")) preferences.remove("INSTALLATION_PUBKEY_LEN");
-          if (preferences.isKey("INST_ID")) preferences.remove("INST_ID");
-          if (preferences.isKey("INST_SECRET")) preferences.remove("INST_SECRET");
-          if (preferences.isKey("INST_PRIVKEY")) preferences.remove("INST_PRIVKEY");
-          if (preferences.isKey("INST_PUBKEY")) preferences.remove("INST_PUBKEY");
-          if (preferences.isKey("INST_PRIVLEN")) preferences.remove("INST_PRIVLEN");
-          if (preferences.isKey("INST_PUBLEN")) preferences.remove("INST_PUBLEN");
-          
-          String installation_id = LaMarzoccoAuth::generate_uuid();
-          if (LaMarzoccoAuth::generate_installation_key(installation_id, key)) {
-            if (LaMarzoccoAuth::save_installation_key(preferences, key)) {
-              debugln("Installation key generated and saved");
-            } else {
-              debugln("Failed to save installation key");
-            }
-          } else {
-            debugln("Failed to generate installation key");
-          }
-        } else {
-          debugln("Installation key found");
-        }
-        
-        g_client = new LaMarzoccoClient(preferences);
-        if (g_client->init(email, password, machine_serial)) {
-          // Register client if needed
-          debugln("Registering client...");
-          if (!g_client->register_client()) {
-            debugln("Registration failed - will retry on first API call");
-            // Note: Registration failures are not critical, will retry during API calls
-          }
-          
-          // Try to get access token (authenticate). A single attempt used to be
-          // enough to declare the credentials invalid and drop into the setup
-          // portal, so one timed out request during startup cost the whole
-          // session - and told the user their password was wrong.
-          bool authorized = false;
-          for (int attempt = 1; attempt <= AUTH_ATTEMPTS_AT_STARTUP; attempt++) {
-            authorized = g_client->get_access_token();
-            if (authorized) {
-              break;
-            }
-
-            int status = g_client->get_last_auth_status();
-            Serial.printf("[AUTH] Sign in attempt %d of %d failed, status %d\n",
-                          attempt, AUTH_ATTEMPTS_AT_STARTUP, status);
-
-            // A 4xx is the server answering that it rejected the credentials.
-            // Retrying cannot change that; anything else is worth another try.
-            if (status >= 400 && status < 500) {
-              break;
-            }
-            if (attempt < AUTH_ATTEMPTS_AT_STARTUP) {
-              delay(AUTH_RETRY_DELAY_MS);
-            }
-          }
-
-          if (!authorized) {
-            int status = g_client->get_last_auth_status();
-            if (status >= 400 && status < 500) {
-              debugln("Authorization failed - the server rejected the credentials");
-              showNoConnectionScreen(
-                "Authorization Failed!\n"
-                "Invalid credentials\n"
-                "Please restart WiFi Setup"
-              );
-
-              delete g_client;
-              g_client = nullptr;
-              setupWEB();
-            } else {
-              // The cloud could not be reached. The credentials may be perfectly
-              // fine, so keep the client: every later API call signs in again on
-              // its own, and the device recovers without being reconfigured.
-              Serial.println("[AUTH] Cloud unreachable at startup, will keep retrying");
-              showNoConnectionScreen(
-                "Cloud Unreachable!\n"
-                "Could not sign in\n"
-                "Retrying..."
-              );
-            }
-          } else {
-            // Initialize websocket and machine
-            g_websocket = new LaMarzoccoWebSocket(*g_client);
-            g_machine = new LaMarzoccoMachine(*g_client, *g_websocket);
-            
-            debugln("La Marzocco client initialized");
-
-            // Initial refresh of coffee/flush counters
-            g_machine->request_stats_refresh();
-
-            // Bluetooth comes up after WiFi so the radio is already settled.
-            scale_ble_begin();
-            
-            // Auto-connect WebSocket on startup
-            debugln("Auto-connecting to WebSocket...");
-            if (g_machine->connect_websocket()) {
-              debugln("✓ WebSocket connection initiated on startup");
-            } else {
-              debugln("✗ Failed to initiate WebSocket connection on startup");
-              // Note: WebSocket failures are not critical, will retry automatically
-            }
-          }
-        } else {
-          debugln("Failed to initialize La Marzocco client");
-          
-          showNoConnectionScreen(
-            "Client Init Failed!\n"
-            "Missing installation key\n"
-            "Please restart WiFi Setup"
-          );
-          
-          delete g_client;
-          g_client = nullptr;
-          setupWEB();
-        }
-      } else {
-        debugln("Missing La Marzocco credentials");
-        // Note: Missing credentials is expected on first run, no error message needed
-      }
+      startCloudServices();
     }
     else
     {
-      debugln("WiFi connection failed after retries, starting WiFi setup");
-      lv_disp_load_scr(ui_NoConnectionScreen);
-      setupWEB();
+      // The credentials were entered once and have not changed; a network out
+      // of reach is far more likely than a wrong password, so do not ask for
+      // it again. The loop keeps retrying, and the screen that is showing has
+      // a button for the setup portal if it really is the credentials.
+      Serial.println("[WIFI] Could not join the network at startup, will keep retrying");
+      showNoConnectionScreen(
+        "No WiFi Connection!\n"
+        "Retrying..."
+      );
+      g_wifi_retry_pending = true;
     }
   }
 }
@@ -444,6 +531,7 @@ void setup()
 void loop()
 {
   servicePortalRequest();   // starts the setup portal when the UI asked for it
+  retryWiFiIfPending();     // keeps trying the configured network after a failed start
   scale_ble_loop();         // finds and reconnects the BOOKOO scale
   machine_actions_process();  // runs power/steam requests from the UI buttons
   updateDateTime();

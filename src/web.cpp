@@ -7,6 +7,7 @@
 #include "Preferences.h"
 #include "config.h"
 #include "web.h"
+#include "wifi_power.h"
 #include "web_handle.h"
 
 extern Preferences preferences;
@@ -85,7 +86,7 @@ void setupAP()
     WiFi.softAP(AP_SSID, password.c_str());
     Serial.print("[AP] SSID: " AP_SSID "  Key: ");
     Serial.println(password);
-    WiFi.setSleep(false);
+    wifi_apply_power_save();
     delay(100);
     dnsServer.start(DNS_PORT, "*", WiFi.softAPIP());
     if (!MDNS.begin(AP_SSID)) // using same name as SSID, shottimer.local
