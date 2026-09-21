@@ -131,8 +131,13 @@ static void start_brewing(int64_t start_time) {
     }
     
     brewing_debugln("[Brewing] ===== STARTING BREWING MODE =====");
-    // Decided once per shot: a scale that drops out later falls back to the
-    // plain timer, but the view does not flip back and forth mid shot.
+    // Evaluated here, at the start of every shot - not once when the device
+    // boots. A scale switched on between two shots is therefore picked up by
+    // the next one without a restart, and one that appears halfway through a
+    // shot is ignored until the shot after it: joining late would mean a curve
+    // missing its first half and a weight with no tare behind it. The one case
+    // that does change mid shot is a scale that stops reporting, handled in the
+    // brewing timer.
     g_scale_mode = shot_view_available();
     if (g_scale_mode) {
 #if SCALE_AUTO_TARE

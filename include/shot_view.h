@@ -12,9 +12,9 @@
 
 void shot_view_init(void);
 
-// True when a scale is connected and its readings are current. The brewing
-// display falls back to the plain timer whenever this is false - including
-// when the scale drops out mid shot.
+// True when a scale is connected and its readings are current. Asked at the
+// start of each shot to choose the layout for that shot, and again while one
+// runs: a scale that stops reporting mid shot falls back to the plain timer.
 bool shot_view_available(void);
 
 // The shot started. Shows time, weight and the live flow band.
