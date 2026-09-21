@@ -393,6 +393,30 @@ void LaMarzoccoMachine::loop() {
         }
     }
 
+    // Every message from the cloud is a change notification. Nothing announces
+    // the state the machine is already in, so the first picture has to be
+    // fetched - otherwise a machine that simply sits there leaves the boilers
+    // blank until someone touches it. The same applies after a reconnect, which
+    // is exactly when a message was missed.
+    if (is_websocket_connected() && !_websocket_was_connected) {
+        _dashboard_refresh_pending = true;
+    }
+    _websocket_was_connected = is_websocket_connected();
+
+    if (_dashboard_refresh_pending) {
+        // A link this weak drops the WebSocket every few minutes, and fetching
+        // the whole dashboard after each reconnect would be most of what the
+        // device does. One fetch per half minute is enough to stay current.
+        unsigned long now = millis();
+        static const unsigned long DASHBOARD_REFRESH_MIN_INTERVAL_MS = 30000;
+        if (_last_dashboard_refresh_ms == 0 ||
+            now - _last_dashboard_refresh_ms >= DASHBOARD_REFRESH_MIN_INTERVAL_MS) {
+            _dashboard_refresh_pending = false;
+            _last_dashboard_refresh_ms = now;
+            refresh_dashboard();
+        }
+    }
+
     // The cloud only pushes on change, so a display that missed a message stays
     // wrong until the next one - which on a standby machine can be hours away.
     // Fetching the state on a timer bounds how stale it can get.
@@ -421,6 +445,10 @@ void LaMarzoccoMachine::loop() {
 
 void LaMarzoccoMachine::request_stats_refresh() {
     _stats_refresh_pending = true;
+}
+
+void LaMarzoccoMachine::request_dashboard_refresh() {
+    _dashboard_refresh_pending = true;
 }
 
 bool LaMarzoccoMachine::refresh_dashboard() {

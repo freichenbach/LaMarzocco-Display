@@ -13,6 +13,13 @@ LaMarzoccoWebSocket::LaMarzoccoWebSocket(LaMarzoccoClient& client)
     _instance = this;
     _ws.onEvent(_ws_event_handler);
     _ws.setReconnectInterval(10000);  // 10 second auto-reconnect interval
+    // Neither side sends anything while the machine sits idle: the STOMP
+    // handshake asks for no heart beat, and a standby machine has nothing to
+    // report. Something in between - the access point, a NAT table, the server
+    // - then drops the silent connection after a couple of minutes. A WebSocket
+    // ping keeps traffic on it and, when the link really is gone, notices in
+    // seconds instead of waiting for a write to fail.
+    _ws.enableHeartbeat(WS_PING_INTERVAL_MS, WS_PONG_TIMEOUT_MS, WS_PING_MISSES_ALLOWED);
     // Don't call beginSSL here - wait until connect() is called
 }
 

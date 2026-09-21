@@ -79,7 +79,17 @@ int getWiFiLevel(void)
     // up here long before it is visible as a failed connection. Below about
     // -75 dBm an ESP32 starts losing beacons, which the access point reports
     // back as disconnect reason 200.
-    Serial.printf("[WIFI] RSSI %d dBm, channel %d\n", (int)rssi, (int)WiFi.channel());
+    // Only when it moves by a few dB, and at most twice a minute: printed on
+    // every status update this buries everything else in the log.
+    static int32_t last_logged_rssi = 0;
+    static unsigned long last_logged_ms = 0;
+    unsigned long now = millis();
+    if (last_logged_ms == 0 || now - last_logged_ms >= 30000 ||
+        abs((int)(rssi - last_logged_rssi)) >= 5) {
+        last_logged_rssi = rssi;
+        last_logged_ms = now;
+        Serial.printf("[WIFI] RSSI %d dBm, channel %d\n", (int)rssi, (int)WiFi.channel());
+    }
 
     // Map RSSI to WiFi level (1-3). Level 0 draws the crossed out icon and is
     // reserved for "not connected" above: a link this weak still carries data,

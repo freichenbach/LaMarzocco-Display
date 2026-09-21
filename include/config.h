@@ -95,6 +95,12 @@ static constexpr const char *NTP_SERVER = "pool.ntp.org";
 #define AUTH_ATTEMPTS_AT_STARTUP  3
 #define AUTH_RETRY_DELAY_MS  (3UL * 1000UL)
 
+// Keeping the WebSocket alive: how often to ping, how long to wait for the
+// answer, and how many missed answers count as a dead connection.
+#define WS_PING_INTERVAL_MS  (20UL * 1000UL)
+#define WS_PONG_TIMEOUT_MS  (8UL * 1000UL)
+#define WS_PING_MISSES_ALLOWED  2
+
 // Time to wait for the NTP sync that TLS certificate validation depends on
 #define TIME_SYNC_TIMEOUT_MS  (15UL * 1000UL)
 

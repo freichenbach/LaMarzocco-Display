@@ -50,6 +50,9 @@ public:
     // change, so without this the display keeps whatever it last heard - and a
     // message lost on a weak link is never made good.
     bool refresh_dashboard();
+
+    // Ask for that fetch to happen from the next loop() pass.
+    void request_dashboard_refresh();
     
 private:
     LaMarzoccoClient& _client;
@@ -58,6 +61,10 @@ private:
     bool _steam_state;
     bool _status_reported = false;
     bool _stats_refresh_pending = false;
+    // The first state the display ever shows has to be fetched: the cloud only
+    // pushes on change, and a machine sitting in standby changes nothing.
+    bool _dashboard_refresh_pending = true;
+    bool _websocket_was_connected = false;
     unsigned long _last_stats_refresh_ms = 0;
     unsigned long _last_dashboard_refresh_ms = 0;
     
