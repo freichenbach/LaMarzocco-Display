@@ -17,6 +17,7 @@
 #include "activity_monitor.h"
 #include "lamarzocco_tls.h"
 #include "machine_actions.h"
+#include "scale_ble.h"
 
 Preferences preferences;
 LaMarzoccoClient* g_client = nullptr;
@@ -400,6 +401,9 @@ void setup()
 
             // Initial refresh of coffee/flush counters
             g_machine->request_stats_refresh();
+
+            // Bluetooth comes up after WiFi so the radio is already settled.
+            scale_ble_begin();
             
             // Auto-connect WebSocket on startup
             debugln("Auto-connecting to WebSocket...");
@@ -440,6 +444,7 @@ void setup()
 void loop()
 {
   servicePortalRequest();   // starts the setup portal when the UI asked for it
+  scale_ble_loop();         // finds and reconnects the BOOKOO scale
   machine_actions_process();  // runs power/steam requests from the UI buttons
   updateDateTime();
   updateStatusImages();  // Update battery and WiFi images (initial + every 30 seconds)

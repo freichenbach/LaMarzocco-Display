@@ -48,6 +48,14 @@ static constexpr const char *NTP_SERVER = "pool.ntp.org";
 #define STEAM_TEMP_LEVEL2  128
 #define STEAM_TEMP_LEVEL3  131
 
+// BOOKOO Themis scale over Bluetooth. Bluetooth and WiFi share one radio on
+// this chip, so on a weak WiFi link this costs some of what is left - set to 0
+// to give the radio back to WiFi.
+#define SCALE_BLE_ENABLED  1
+#define SCALE_SCAN_SECONDS  5
+#define SCALE_SCAN_INTERVAL_MS  (30UL * 1000UL)
+#define SCALE_READING_STALE_MS  3000
+
 // Boiler arcs: heating up, and ready.
 #define BOILER_ARC_COLOR_HEATING  0x4040FF
 #define BOILER_ARC_COLOR_READY    0x2FBF4F

@@ -120,6 +120,26 @@ battery that is not there. The indicator is therefore off by default and the
 icon is hidden. Set `BATTERY_ICON_ENABLED` to 1 in `include/config.h` when
 running from a battery.
 
+### BOOKOO scale over Bluetooth
+
+A BOOKOO Themis scale can be read over BLE, and the weight is shown under the
+shot timer while brewing. The device scans for a peripheral whose name starts
+with `BOOKOO`, subscribes to its weight notifications and reconnects on its own.
+
+Bluetooth and WiFi share one radio on the ESP32-S3, so this costs some of the
+WiFi budget. On a marginal link, set `SCALE_BLE_ENABLED` to 0 in
+`include/config.h` to give the radio back.
+
+The frame format is BooKoo's own, published at
+<https://github.com/BooKooCode/OpenSource>. The decoder in
+`src/bookoo_protocol.cpp` is free of Arduino types so it can be exercised on a
+host compiler:
+
+```bash
+g++ -std=c++17 -I include test/bookoo/test_bookoo_protocol.cpp \
+    src/bookoo_protocol.cpp -o /tmp/test_bookoo && /tmp/test_bookoo
+```
+
 ### Brewing simulation
 
 Pulling GPIO 15 low fakes a brewing cycle on the display, which is useful when

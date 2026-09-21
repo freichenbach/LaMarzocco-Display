@@ -1,4 +1,5 @@
 #include "brewing_display.h"
+#include "scale_ble.h"
 #include "water_alarm.h"
 #include "config.h"
 #include "ui/ui.h"
@@ -344,7 +345,52 @@ void brewing_display_timer_callback(lv_timer_t* timer) {
  * the LVGL task context where the mutex is already held. Do NOT take the mutex here.
  * Optimized: Only updates text if value changed to reduce unnecessary redraws.
  */
+// Shown under the shot timer while a scale is connected. Created here rather
+// than in the generated screen code, so a re-export from SquareLine Studio does
+// not drop it.
+static lv_obj_t* g_weight_label = nullptr;
+
+static void update_weight_display(void) {
+    if (!ui_SecValueLabel) {
+        return;
+    }
+
+    bookoo::Reading reading;
+    uint32_t age_ms = 0;
+    // A scale that stopped sending should not leave a stale number standing.
+    bool show = scale_ble_is_connected() &&
+                scale_ble_last_reading(reading, age_ms) &&
+                age_ms < SCALE_READING_STALE_MS;
+
+    if (!show) {
+        if (g_weight_label) {
+            lv_obj_add_flag(g_weight_label, LV_OBJ_FLAG_HIDDEN);
+        }
+        return;
+    }
+
+    if (!g_weight_label) {
+        g_weight_label = lv_label_create(lv_obj_get_parent(ui_SecValueLabel));
+        lv_obj_set_style_text_font(g_weight_label, &lv_font_montserrat_22,
+                                   LV_PART_MAIN | LV_STATE_DEFAULT);
+    }
+
+    static char last_weight_str[16] = "";
+    char weight_str[16];
+    snprintf(weight_str, sizeof(weight_str), "%.1f g", reading.weight_g);
+
+    if (strcmp(weight_str, last_weight_str) != 0) {
+        strncpy(last_weight_str, weight_str, sizeof(last_weight_str) - 1);
+        lv_label_set_text(g_weight_label, weight_str);
+    }
+    lv_obj_align_to(g_weight_label, ui_SecValueLabel, LV_ALIGN_OUT_BOTTOM_MID, 0, 4);
+    lv_obj_clear_flag(g_weight_label, LV_OBJ_FLAG_HIDDEN);
+}
+
 static void update_elapsed_time_display(void) {
+    // Runs in the LVGL timer, so the label can be touched directly.
+    update_weight_display();
+
     if (g_brewing_start_time <= 0) {
         return;
     }
@@ -466,6 +512,10 @@ static void show_brewing_ui(void) {
  * Hide brewing UI elements
  */
 static void hide_brewing_ui(void) {
+    if (g_weight_label) {
+        lv_obj_add_flag(g_weight_label, LV_OBJ_FLAG_HIDDEN);
+    }
+
     TAKE_MUTEX() {
         if (ui_SecPanel) {
             lv_obj_add_flag(ui_SecPanel, LV_OBJ_FLAG_HIDDEN);
