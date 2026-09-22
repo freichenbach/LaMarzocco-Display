@@ -23,6 +23,11 @@ void shot_view_start(void);
 // Called from the brewing timer while the shot runs.
 void shot_view_tick(int64_t elapsed_ms);
 
+// The machine stopped but the cup is still filling. Refreshes the weight that
+// the result will report, without adding to the curves - those end where the
+// pump did. Returns the weight now on the scale.
+float shot_view_settle(void);
+
 // The shot ended: switch to the result and the curves.
 void shot_view_finish(int64_t elapsed_ms);
 

@@ -350,6 +350,22 @@ void shot_view_tick(int64_t elapsed_ms)
     lv_chart_refresh(g_chart);
 }
 
+float shot_view_settle(void)
+{
+    bookoo::Reading reading;
+    uint32_t age_ms = 0;
+    if (g_active && !g_showing_result &&
+        scale_ble_last_reading(reading, age_ms) && age_ms < SCALE_READING_STALE_MS) {
+        g_last_weight = reading.weight_g;
+
+        char buffer[16];
+        snprintf(buffer, sizeof(buffer), "%.1f", reading.weight_g);
+        lv_label_set_text(g_weight_value, buffer);
+        lv_obj_align_to(g_weight_unit, g_weight_value, LV_ALIGN_OUT_RIGHT_BOTTOM, 4, -8);
+    }
+    return g_last_weight;
+}
+
 void shot_view_finish(int64_t elapsed_ms)
 {
     if (!g_active) {
@@ -425,6 +441,7 @@ void shot_view_init(void) {}
 bool shot_view_available(void) { return false; }
 void shot_view_start(void) {}
 void shot_view_tick(int64_t) {}
+float shot_view_settle(void) { return 0.0f; }
 void shot_view_finish(int64_t) {}
 void shot_view_hide(void) {}
 bool shot_view_is_active(void) { return false; }

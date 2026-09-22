@@ -26,7 +26,8 @@ typedef enum {
     BREWING_STATE_IDLE = 0,      // Not brewing
     BREWING_STATE_ACTIVE = 1,    // Currently brewing
     BREWING_STATE_FLASHING = 2,  // Flashing final time after brewing stops
-    BREWING_STATE_RESULT = 3     // Scale connected: showing the curves after the shot
+    BREWING_STATE_RESULT = 3,    // Scale connected: showing the curves after the shot
+    BREWING_STATE_SETTLING = 4   // Pump stopped, still catching the last drops
 } BrewingState;
 
 // Global variables
@@ -36,6 +37,10 @@ static int64_t g_brewing_start_time = 0;
 static int g_final_seconds = 0;  // Final seconds value to flash
 static bool g_scale_mode = false;      // this shot is being weighed
 static unsigned long g_result_start_ms = 0;
+static unsigned long g_settle_start_ms = 0;
+static unsigned long g_settle_quiet_since = 0;
+static float g_settle_last_weight = 0.0f;
+static int64_t g_final_elapsed_ms = 0;
 static lv_timer_t* g_update_timer = NULL;
 static bool g_timer_paused = true;
 static SemaphoreHandle_t g_gui_mutex = NULL;
@@ -204,12 +209,15 @@ static void stop_brewing(void) {
     brewing_debugln(g_final_seconds);
     
     if (g_scale_mode) {
-        // The curves replace the three second flash of the final time. The
-        // result keeps the tenth of a second the flash view rounds away.
-        shot_view_finish(final_elapsed_ms);
-        g_state = BREWING_STATE_RESULT;
-        g_result_start_ms = millis();
-        g_brewing_start_time = 0;
+        // Not finished yet: the machine has stopped its pump, but coffee is
+        // still running through the puck into the cup. Showing the weight from
+        // this instant would report a shot a gram or two light. Hold the view
+        // as it is and keep reading the scale until the weight settles.
+        g_final_elapsed_ms = final_elapsed_ms;
+        g_state = BREWING_STATE_SETTLING;
+        g_settle_start_ms = millis();
+        g_settle_quiet_since = g_settle_start_ms;
+        g_settle_last_weight = shot_view_settle();
         return;
     }
 
@@ -333,6 +341,31 @@ void brewing_display_timer_callback(lv_timer_t* timer) {
                     }
                 }
                 update_elapsed_time_display();
+            }
+            break;
+
+        case BREWING_STATE_SETTLING:
+            {
+                float weight = shot_view_settle();
+                unsigned long now = millis();
+
+                // Any real movement restarts the quiet period; the drops are
+                // done once nothing has changed for a while.
+                if (fabsf(weight - g_settle_last_weight) >= SHOT_SETTLE_DELTA_G) {
+                    g_settle_last_weight = weight;
+                    g_settle_quiet_since = now;
+                }
+
+                bool settled = (now - g_settle_quiet_since) >= SHOT_SETTLE_QUIET_MS;
+                bool waited_long_enough = (now - g_settle_start_ms) >= SHOT_SETTLE_MAX_MS;
+
+                if (settled || waited_long_enough || !shot_view_available()) {
+                    // The time is the machine's, the weight is the scale's.
+                    shot_view_finish(g_final_elapsed_ms);
+                    g_state = BREWING_STATE_RESULT;
+                    g_result_start_ms = now;
+                    g_brewing_start_time = 0;
+                }
             }
             break;
 
@@ -661,7 +694,9 @@ int64_t brewing_display_get_current_time_ms(void) {
  * This ensures normal UI stays hidden during the entire brewing sequence
  */
 bool brewing_display_is_active(void) {
-    return g_initialized && (g_state == BREWING_STATE_ACTIVE || g_state == BREWING_STATE_FLASHING);
+    return g_initialized && (g_state == BREWING_STATE_ACTIVE ||
+                             g_state == BREWING_STATE_SETTLING ||
+                             g_state == BREWING_STATE_FLASHING);
 }
 
 /**

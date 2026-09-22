@@ -63,6 +63,14 @@ static constexpr const char *NTP_SERVER = "pool.ntp.org";
 #define SHOT_CHART_POINTS  120
 #define SHOT_RESULT_MS  (15UL * 1000UL)
 
+// The pump stops before the cup is full: coffee keeps dripping through the
+// puck for a moment afterwards. Keep reading the scale until the weight holds
+// still, so the result is what ended up in the cup rather than what was in it
+// when the machine stopped. The shot time stays the machine's.
+#define SHOT_SETTLE_MAX_MS  (5UL * 1000UL)
+#define SHOT_SETTLE_QUIET_MS  (1200UL)
+#define SHOT_SETTLE_DELTA_G  0.1f
+
 #define SHOT_VIEW_BG_COLOR  0xF2F4F7
 #define SHOT_VIEW_INK_COLOR  0x101418
 #define SHOT_VIEW_MUTED_COLOR  0x6B7684
