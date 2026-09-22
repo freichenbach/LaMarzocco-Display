@@ -170,8 +170,17 @@ static void start_brewing(int64_t start_time) {
  * Stop brewing mode
  */
 static void stop_brewing(void) {
-    if (g_state == BREWING_STATE_IDLE) {
-        return;  // Already stopped
+    // Every dashboard message that does not say "Brewing" arrives here, and a
+    // machine at rest sends plenty of them: a boiler reaching temperature, the
+    // refresh after a reconnect, the five minute poll. Only leaving an active
+    // shot is a stop.
+    //
+    // Without this the second message re-ran the whole ending: the start time
+    // had already been cleared, so the finished result was overwritten with a
+    // shot of zero seconds and an average of zero, and the fifteen seconds the
+    // result stays up began again.
+    if (g_state != BREWING_STATE_ACTIVE) {
+        return;
     }
     
     brewing_debugln("[Brewing] ===== STOPPING BREWING MODE =====");
