@@ -33,6 +33,16 @@ const int WIFI_TIMEOUT_MS = 15000;
 bool connectToWiFi(const String &ssid, const String &password)
 {
   debugln("Attempting to connect to WiFi...");
+
+  // The default scan stops at the first access point answering to the network
+  // name and connects to that one, however weak it is. In a building with one
+  // access point per floor that is regularly the wrong one: a device three
+  // metres from an access point ended up on a distant one at -98 dBm, losing
+  // beacons and failing every TLS handshake afterwards. Scanning all channels
+  // makes the sort below apply, so the strongest one wins.
+  WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
+  WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
+
   WiFi.begin(ssid.c_str(), password.c_str());
   WiFi.setSleep(false);
   int retries = 0;
@@ -49,6 +59,12 @@ bool connectToWiFi(const String &ssid, const String &password)
     debugln("WiFi connected!");
     debug("IP address: ");
     debugln(WiFi.localIP());
+    // Which access point was picked, and how well it is heard. Not behind
+    // DEBUG: when someone reports that the display keeps dropping out, this is
+    // the first line worth seeing, and asking for a rebuild to get it costs a
+    // round trip.
+    Serial.printf("[WIFI] Connected to %s, channel %d, %d dBm\n",
+                  WiFi.BSSIDstr().c_str(), (int)WiFi.channel(), (int)WiFi.RSSI());
     return true;
   }
   else
