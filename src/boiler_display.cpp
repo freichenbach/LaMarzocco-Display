@@ -68,6 +68,7 @@ void boiler_display_init(void) {
     g_boilers[BOILER_COFFEE].ready_start_time = 0;
     g_boilers[BOILER_COFFEE].state = BOILER_STATE_OFF;
     g_boilers[BOILER_COFFEE].last_remaining_sec = -1;
+    g_boilers[BOILER_COFFEE].warmup_total_sec = 0;
     
     // Initialize Steam Boiler (right arc)
     g_boilers[BOILER_STEAM].type = BOILER_STEAM;
@@ -76,6 +77,7 @@ void boiler_display_init(void) {
     g_boilers[BOILER_STEAM].ready_start_time = 0;
     g_boilers[BOILER_STEAM].state = BOILER_STATE_OFF;
     g_boilers[BOILER_STEAM].last_remaining_sec = -1;
+    g_boilers[BOILER_STEAM].warmup_total_sec = 0;
     
     // SquareLine gave both temperature labels a fixed width that fits "95C"
     // and not much more: a three digit steam temperature wrapped, leaving the
@@ -437,11 +439,17 @@ static void update_arc_and_label(BoilerInfo* boiler, int remaining_seconds) {
     
     boiler->last_remaining_sec = remaining_seconds;
     
-    // Calculate arc value (100% at start, 0% at end)
-    // Arc represents time REMAINING, so it decreases as time passes
-    // Note: We use WARMUP_DURATION_SEC (300s) as the assumed max duration
-    // The arc will be accurate if actual warmup is ~5 minutes
-    int arc_value = (remaining_seconds * 100) / WARMUP_DURATION_SEC;
+    // The arc fills up towards READY, so that a full arc always means ready:
+    // 0% when heating starts, 100% when the boiler reaches temperature, where
+    // it turns green. If the machine pushes the ready time back, grow the
+    // scale rather than let the arc run backwards past empty.
+    if (remaining_seconds > boiler->warmup_total_sec) {
+        boiler->warmup_total_sec = remaining_seconds;
+    }
+    int arc_value = 100;
+    if (boiler->warmup_total_sec > 0) {
+        arc_value = ((boiler->warmup_total_sec - remaining_seconds) * 100) / boiler->warmup_total_sec;
+    }
     if (arc_value < 0) arc_value = 0;
     if (arc_value > 100) arc_value = 100;
     
@@ -503,6 +511,7 @@ static void set_boiler_off(BoilerInfo* boiler) {
     boiler->state = BOILER_STATE_OFF;
     boiler->ready_start_time = 0;
     boiler->last_remaining_sec = -1;
+    boiler->warmup_total_sec = 0;
     
     // Set arc to 0% and label to "OFF" with mutex protection
     TAKE_MUTEX() {
@@ -537,6 +546,7 @@ static void set_boiler_off(BoilerInfo* boiler) {
 static void set_boiler_heating(BoilerInfo* boiler, int64_t ready_start_time) {
     if (!boiler || !boiler->arc || !boiler->label) return;
     
+    bool new_warmup = (boiler->state != BOILER_STATE_HEATING);
     boiler->state = BOILER_STATE_HEATING;
     set_arc_color(boiler, BOILER_ARC_COLOR_HEATING);
     boiler->ready_start_time = ready_start_time;
@@ -545,6 +555,12 @@ static void set_boiler_heating(BoilerInfo* boiler, int64_t ready_start_time) {
     // Calculate initial remaining time and update display
     int64_t now_ms = boiler_display_get_current_time_ms();
     int remaining_sec = calculate_remaining_seconds(ready_start_time, now_ms);
+    // A new warm-up starts the arc from empty, with the first remaining time
+    // seen as its scale. A revised ready time during the same warm-up keeps
+    // the scale, so the arc does not jump back to empty.
+    if (new_warmup) {
+        boiler->warmup_total_sec = remaining_sec;
+    }
     update_arc_and_label(boiler, remaining_sec);
     
     // Resume timer if it was paused
