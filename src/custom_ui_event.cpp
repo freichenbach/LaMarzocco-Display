@@ -3,6 +3,7 @@
 #include "activity_monitor.h"
 #include "web.h"
 #include "machine_actions.h"
+#include "control_buttons.h"
 
 extern LaMarzoccoMachine* g_machine;
 
@@ -90,8 +91,8 @@ static void run_machine_action(PendingAction action)
   bool success = (action == PENDING_POWER) ? g_machine->toggle_power()
                                            : g_machine->toggle_steam();
 
-  // No UI update here: the button state follows the WebSocket confirmation,
-  // which also avoids taking the GUI mutex from this side.
+  // No UI update here: the buttons follow the machine state themselves (see
+  // control_buttons.cpp), which also avoids taking the GUI mutex from this side.
   Serial.printf("[ACTION] %s toggle %s\n", what, success ? "sent" : "failed");
 }
 
@@ -110,11 +111,13 @@ void machine_actions_process(void)
 void turnOnMachine(lv_event_t * e)
 {
   activity_monitor_mark_user_activity();
+  control_buttons_mark_pending(CONTROL_BUTTON_POWER);
   machine_action_request_power_toggle();
 }
 
 void toggleSteamBoiler(lv_event_t * e)
 {
   activity_monitor_mark_user_activity();
+  control_buttons_mark_pending(CONTROL_BUTTON_STEAM);
   machine_action_request_steam_toggle();
 }

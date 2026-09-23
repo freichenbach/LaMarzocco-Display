@@ -81,6 +81,17 @@ static constexpr const char *NTP_SERVER = "pool.ntp.org";
 #define BOILER_ARC_COLOR_HEATING  0x4040FF
 #define BOILER_ARC_COLOR_READY    0x2FBF4F
 
+// Power and steam buttons show whether the machine / steam boiler is on:
+// a filled disc with a white icon when on, a grey outline and icon when off.
+// While a tap waits for the machine to confirm, the icon is faded, for at
+// most CONTROL_BUTTON_PENDING_MS.
+#define CONTROL_BUTTON_ON_BG       0x303030
+#define CONTROL_BUTTON_ON_ICON     0xFFFFFF
+#define CONTROL_BUTTON_OFF_BORDER  0xC8C8C8
+#define CONTROL_BUTTON_OFF_ICON    0x9A9A9A
+#define CONTROL_BUTTON_PENDING_OPA 100
+#define CONTROL_BUTTON_PENDING_MS  (10UL * 1000UL)
+
 #define USER_INACTIVITY_TIMEOUT_MS  (360UL * 60UL * 1000UL)
 #define MACHINE_INACTIVITY_TIMEOUT_MS  (360UL * 60UL * 1000UL)
 #define USER_DIM_TIMEOUT_MS  (10UL * 60UL * 1000UL)

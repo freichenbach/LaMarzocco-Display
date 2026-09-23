@@ -14,6 +14,7 @@
 #include "boiler_display.h"
 #include "water_alarm.h"
 #include "brewing_display.h"
+#include "control_buttons.h"
 #include "activity_monitor.h"
 #include "lamarzocco_tls.h"
 #include "machine_actions.h"
@@ -644,6 +645,9 @@ void Task_LVGL(void *pvParameters)
   // Initialize brewing display system
   brewing_display_set_mutex((void*)gui_mutex);
   brewing_display_init();
+
+  // Power and steam buttons show the state they switch
+  control_buttons_init();
   
   // Main LVGL loop
   while (1)
