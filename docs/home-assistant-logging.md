@@ -23,10 +23,12 @@ instance. Copy the relevant parts into your own `configuration.yaml`/
 }
 ```
 
-No pressure and no temperature-over-time curve: the display has no pressure
-sensor, and the La Marzocco API only exposes a target/setpoint temperature,
-not a continuous reading. `target_temp_label` is a snapshot of that setpoint
-at the moment the shot finished.
+No pressure sensor and no temperature-over-time curve: the display has no
+pressure sensor, and the La Marzocco API only exposes a target/setpoint
+temperature, not a continuous reading. `target_temp_label` is a snapshot of
+that setpoint at the moment the shot finished. Section 1 below adds an
+*estimated* pressure line computed from the flow we do have - it is not a
+measurement, see the note there.
 
 ## 1. Webhook -> InfluxDB (the curve)
 
@@ -53,6 +55,28 @@ at the moment the shot finished.
           final_weight_g: "{{ trigger.json.final_weight_g }}"
           avg_flow_g_per_s: "{{ trigger.json.avg_flow_g_per_s }}"
           target_temp_label: "{{ trigger.json.target_temp_label | default('') }}"
+    - variables:
+        raw_flow: "{{ trigger.json.samples | map(attribute='flow_g_per_s') | list }}"
+        target_bar: 9.0   # the plateau the estimate is scaled to reach
+    - variables:
+        # Causal smoothing (a simple exponential moving average) so the
+        # estimate reads as a curve rather than the raw flow's jitter, then
+        # scaled so its own peak lands on target_bar.
+        smoothed: >
+          {% set ns = namespace(prev=0.0, out=[]) %}
+          {% for f in raw_flow %}
+            {% set ns.prev = 0.3 * f + 0.7 * ns.prev %}
+            {% set ns.out = ns.out + [ns.prev] %}
+          {% endfor %}
+          {{ ns.out }}
+    - variables:
+        peak: "{{ (smoothed | max) if (smoothed | max) > 0 else 1.0 }}"
+        estimated_bar: >
+          {% set ns = namespace(out=[]) %}
+          {% for s in smoothed %}
+            {% set ns.out = ns.out + [ (s / peak * target_bar) | round(2) ] %}
+          {% endfor %}
+          {{ ns.out }}
     - repeat:
         for_each: "{{ trigger.json.samples }}"
         sequence:
@@ -65,10 +89,21 @@ at the moment the shot finished.
                 t_s: "{{ repeat.item.t_s }}"
                 weight_g: "{{ repeat.item.weight_g }}"
                 flow_g_per_s: "{{ repeat.item.flow_g_per_s }}"
+                estimated_pressure_bar: "{{ estimated_bar[repeat.index - 1] }}"
 ```
 
 Requires the built-in [InfluxDB integration](https://www.home-assistant.io/integrations/influxdb/)
 configured for write access to your InfluxDB instance.
+
+**About `estimated_pressure_bar`:** the Bookoo app itself draws a pressure
+curve from a Themis scale alone (no separate EM pressure sensor) - it is
+computed from flow/weight/time, not measured. The formula above is *our own*
+heuristic to get a similarly shaped line (smoothed flow, scaled to a target
+plateau), not a reverse-engineered copy of Bookoo's algorithm, which is not
+published. Treat it, and label it in any dashboard, as a shape reference for
+where the pump was ramping vs. holding steady - never as a real bar reading.
+Adjust `target_bar` (default 9.0) if your machine runs a different brew
+pressure, and the smoothing factor `0.3` for a snappier or flatter line.
 
 ## 2. Metadata form (bean, grind, rating, notes)
 
@@ -129,7 +164,10 @@ older shot).
   `shot_curve` measurement's `shot_id` tag (sorted descending, so the newest
   shot is first).
 - A time-series panel over `shot_sample` filtered to the selected `shot_id`,
-  plotting `weight_g` and `flow_g_per_s` against `t_s`.
+  plotting `weight_g` and `flow_g_per_s` against `t_s`, plus
+  `estimated_pressure_bar` on its own axis (0-12 bar, matching the Bookoo
+  app's layout) - label its series "Pressure (estimated)" so it is never read
+  as a real measurement.
 - A table panel joining `shot_curve` and `shot_metadata` on `shot_id`, listing
   past shots with duration, weight, bean, grind and rating - your shot
   history / journal.
