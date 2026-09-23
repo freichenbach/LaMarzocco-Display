@@ -13,3 +13,4 @@ void handleNotFound(void);
 void saveWifiHandler(void);
 void saveCloudHandler(void);
 void saveMachineHandler(void);
+void saveLoggingHandler(void);

@@ -142,6 +142,7 @@ void setupWEB(void)
     server.on("/wifiConfig", HTTP_POST, saveWifiHandler);
     server.on("/cloudConfig", HTTP_POST, saveCloudHandler);
     server.on("/machineConfig", HTTP_POST, saveMachineHandler);
+    server.on("/loggingConfig", HTTP_POST, saveLoggingHandler);
 
     server.on("/restart", HTTP_GET, restartHander);
 

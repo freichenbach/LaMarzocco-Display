@@ -40,6 +40,7 @@
                 document.getElementById('wifi-status').value = obj.wifi;
                 document.getElementById('username-status').value = obj.email;
                 document.getElementById('machine-status').value = obj.machine;
+                document.getElementById('ha_webhook').value = obj.ha_webhook;
             }
         }
 
@@ -72,6 +73,15 @@
                 <button type="button" onclick="location.href='/'">Setup Wizard</button>
                 <button type="button" onclick="confirmSettings()">Confirm</button>
             </div>
+        </form>
+
+        <h2>Shot logging (optional)</h2>
+        <form action='/loggingConfig' method='POST' name="loggingConfigForm">
+            <input type="text" class="input_text" id="ha_webhook" name="ha_webhook"
+                placeholder="http://homeassistant.local:8123/api/webhook/...">
+            <div style="font-size: 14px; margin-top: 5px;">Home Assistant webhook URL to upload each shot's
+                curve to. Leave empty to disable.</div>
+            <button type="submit">Save</button>
         </form>
     </div>
 </body>

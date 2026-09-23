@@ -20,6 +20,7 @@
 #include "machine_actions.h"
 #include "scale_ble.h"
 #include "wifi_power.h"
+#include "shot_logger.h"
 
 Preferences preferences;
 LaMarzoccoClient* g_client = nullptr;
@@ -548,6 +549,10 @@ void loop()
   if (g_machine) {
     g_machine->loop();  // This calls websocket.loop()
   }
+
+  // Uploads the last finished shot if one is waiting. Runs here, not in the
+  // LVGL task, because the HTTP request blocks.
+  shot_logger_loop();
   
   // Small delay to prevent watchdog issues, but keep loop responsive
   delay(10);

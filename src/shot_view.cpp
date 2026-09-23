@@ -1,6 +1,7 @@
 #include "shot_view.h"
 #include "config.h"
 #include "scale_ble.h"
+#include "shot_logger.h"
 
 #include <Arduino.h>
 #include "ui/ui.h"
@@ -39,6 +40,10 @@ lv_obj_t *g_legend_weight = nullptr;
 lv_obj_t *g_chart = nullptr;
 lv_chart_series_t *g_series_flow = nullptr;
 lv_chart_series_t *g_series_weight = nullptr;
+
+// The chart only keeps the fixed-point values it draws with. These parallel
+// raw samples are what shot_logger.h actually uploads.
+ShotLogSample g_raw_samples[SHOT_CHART_POINTS];
 
 bool g_active = false;
 bool g_showing_result = false;
@@ -342,6 +347,8 @@ void shot_view_tick(int64_t elapsed_ms)
     if (flow_x100 > g_max_flow_x100) g_max_flow_x100 = flow_x100;
     if (weight_x10 > g_max_weight_x10) g_max_weight_x10 = weight_x10;
 
+    g_raw_samples[g_point_index] = { reading.weight_g, flow };
+
     lv_chart_set_value_by_id(g_chart, g_series_flow, g_point_index, flow_x100);
     lv_chart_set_value_by_id(g_chart, g_series_weight, g_point_index, weight_x10);
     g_point_index++;
@@ -410,6 +417,11 @@ void shot_view_finish(int64_t elapsed_ms)
     g_showing_result = true;
     layout_result();
     lv_chart_refresh(g_chart);
+
+    // Handed off for an asynchronous upload - see shot_logger.h for why this
+    // cannot POST directly from here (the LVGL task, holding gui_mutex).
+    const char *target_temp_label = ui_CoffeeTempLabel ? lv_label_get_text(ui_CoffeeTempLabel) : nullptr;
+    shot_logger_capture(g_raw_samples, g_point_index, seconds, g_last_weight, average, target_temp_label);
 }
 
 void shot_view_hide(void)
