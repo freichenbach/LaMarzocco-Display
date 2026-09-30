@@ -14,12 +14,14 @@
 #include "boiler_display.h"
 #include "water_alarm.h"
 #include "brewing_display.h"
+#include "control_buttons.h"
 #include "activity_monitor.h"
 #include "lamarzocco_tls.h"
 #include "machine_actions.h"
 #include "scale_ble.h"
 #include "wifi_power.h"
 #include "backflush_view.h"
+#include "shot_logger.h"
 
 Preferences preferences;
 LaMarzoccoClient* g_client = nullptr;
@@ -548,6 +550,10 @@ void loop()
   if (g_machine) {
     g_machine->loop();  // This calls websocket.loop()
   }
+
+  // Uploads the last finished shot if one is waiting. Runs here, not in the
+  // LVGL task, because the HTTP request blocks.
+  shot_logger_loop();
   
   // Small delay to prevent watchdog issues, but keep loop responsive
   delay(10);
@@ -648,6 +654,9 @@ void Task_LVGL(void *pvParameters)
 
   // Cleaning cycle, reachable by tapping the flush counter
   backflush_view_init();
+
+  // Power and steam buttons show the state they switch
+  control_buttons_init();
   
   // Main LVGL loop
   while (1)

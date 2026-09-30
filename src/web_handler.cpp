@@ -131,6 +131,8 @@ void sendStatus(void)
     jsonDoc["wifi"] = preferences.getString("SSID", "N/A");
     jsonDoc["email"] = maskEmail(preferences.getString("USER_EMAIL", ""));
     jsonDoc["machine"] = maskSerial(preferences.getString("MACHINE", ""));
+    // Not a secret, just a local address - shown in full so it can be edited.
+    jsonDoc["ha_webhook"] = preferences.getString("HA_WEBHOOK", "");
     String jsonString;
     serializeJson(jsonDoc, jsonString);
     server.send(200, "application/json", jsonString);
@@ -200,6 +202,14 @@ void saveMachineHandler(void)
         debugln("Installation key already exists");
     }
     
+    streamFile("/status.html");
+}
+
+void saveLoggingHandler(void)
+{
+    // Read on every upload attempt (shot_logger.cpp), not cached at boot, so
+    // this takes effect immediately - no restart needed.
+    if (!storeField("HA_WEBHOOK", server.arg("ha_webhook"), 128)) return;
     streamFile("/status.html");
 }
 

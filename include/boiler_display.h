@@ -8,9 +8,6 @@ extern "C" {
 #include <stdint.h>
 #include <stdbool.h>
 
-// Warm-up duration in seconds (5 minutes)
-#define WARMUP_DURATION_SEC 300
-
 // Boiler types
 typedef enum {
     BOILER_COFFEE = 0,
@@ -32,6 +29,7 @@ typedef struct {
     int64_t ready_start_time;   // Ready start time in milliseconds (from JSON)
     BoilerState state;          // Current state
     int last_remaining_sec;     // Last calculated remaining seconds (for change detection)
+    int warmup_total_sec;       // Remaining seconds when heating was first seen (arc scale)
 } BoilerInfo;
 
 /**
@@ -65,9 +63,10 @@ void boiler_display_init(void);
  * - Display shows remaining time which is timezone-independent
  * 
  * Arc Calculation:
- * - Arc assumes WARMUP_DURATION_SEC (300s/5min) as typical warmup time
- * - Arc value = (remaining_seconds / 300) * 100%
- * - Arc is most accurate when actual warmup is close to 5 minutes
+ * - Arc shows progress towards READY: empty when heating starts, full when ready
+ * - Scale is the remaining time when heating was first seen, so every warm-up
+ *   runs from 0% to 100% whatever its length
+ * - Arc value = (warmup_total_sec - remaining_seconds) / warmup_total_sec * 100%
  * 
  * @param type Boiler type (BOILER_COFFEE or BOILER_STEAM)
  * @param machine_status Machine status string ("Off", "StandBy", "PoweredOn", etc.)
