@@ -30,6 +30,11 @@ public:
     
     // Toggle steam boiler
     bool toggle_steam();
+
+    // Ask the machine to start a cleaning cycle. The command alone does not
+    // start it: the machine then waits for the paddle to be moved, and reports
+    // the backflush as Requested until it is.
+    bool start_backflush();
     
     // Connect websocket and start listening
     bool connect_websocket();

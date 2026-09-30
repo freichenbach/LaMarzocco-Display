@@ -43,6 +43,7 @@ enum PendingAction : uint8_t {
   PENDING_NONE = 0,
   PENDING_POWER,
   PENDING_STEAM,
+  PENDING_BACKFLUSH,
 };
 
 static volatile PendingAction g_pending_action = PENDING_NONE;
@@ -57,10 +58,24 @@ void machine_action_request_steam_toggle(void)
   g_pending_action = PENDING_STEAM;
 }
 
+void machine_action_request_backflush(void)
+{
+  g_pending_action = PENDING_BACKFLUSH;
+}
+
 static void run_machine_action(PendingAction action)
 {
   if (!g_machine) {
     Serial.println("[ACTION] No machine client - not configured?");
+    return;
+  }
+
+  if (action == PENDING_BACKFLUSH) {
+    Serial.println("[ACTION] Requesting a backflush");
+    bool sent = g_machine->start_backflush();
+    // The machine does not start on the command alone: it waits for the paddle
+    // to be moved, and says so by reporting the backflush as Requested.
+    Serial.printf("[ACTION] Backflush request %s\n", sent ? "sent" : "failed");
     return;
   }
 
