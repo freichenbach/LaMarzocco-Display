@@ -5,9 +5,12 @@
 #include "activity_monitor.h"
 
 #include <Arduino.h>
+#include <Preferences.h>
 #include <string.h>
 
 #include "ui/ui.h"
+
+extern Preferences preferences;
 
 namespace {
 
@@ -48,7 +51,26 @@ lv_obj_t *g_detail    = nullptr;
 lv_obj_t *g_start_btn = nullptr;
 lv_obj_t *g_close_btn = nullptr;
 lv_obj_t *g_close_lbl = nullptr;
+lv_obj_t *g_arc       = nullptr;
+lv_obj_t *g_spinner   = nullptr;
 lv_timer_t *g_timer   = nullptr;
+
+// The cloud reports no duration and no progress, only the three states. So the
+// length of a cycle is measured the first time one runs and kept, and from the
+// second cycle on it can be counted down. Until then there is nothing honest to
+// count, and the spinner runs instead.
+uint32_t g_known_duration_s = 0;
+unsigned long g_caption_since = 0;
+uint8_t g_caption_index = 0;
+
+const char *const CAPTIONS[] = {
+    "Sprudelt",
+    "Schrubbt",
+    "Blubbert",
+    "Gurgelt",
+    "Macht sauber",
+};
+const uint8_t CAPTION_COUNT = sizeof(CAPTIONS) / sizeof(CAPTIONS[0]);
 
 void show(lv_obj_t *object, bool visible)
 {
@@ -62,6 +84,12 @@ void show(lv_obj_t *object, bool visible)
     }
 }
 
+void show_progress(bool visible, bool determinate)
+{
+    show(g_arc, visible && determinate);
+    show(g_spinner, visible && !determinate);
+}
+
 void set_texts(const char *headline, const char *detail)
 {
     lv_label_set_text(g_headline, headline);
@@ -73,6 +101,16 @@ void enter(ViewState state, const char *headline, const char *detail,
 {
     g_state = state;
     g_state_since = millis();
+    g_caption_since = g_state_since;
+    g_caption_index = 0;
+
+    bool running = (state == VIEW_RUNNING);
+    show_progress(running, running && g_known_duration_s > 0);
+    // While it runs the headline sits inside the ring; otherwise it stands on
+    // its own under the title.
+    lv_obj_align(g_headline, LV_ALIGN_TOP_MID, 0, running ? 91 : 56);
+    lv_obj_align(g_detail, LV_ALIGN_TOP_MID, 0, running ? 40 : 100);
+
     set_texts(headline, detail);
     show(g_start_btn, offer_start);
     lv_label_set_text(g_close_lbl, close_text);
@@ -105,7 +143,7 @@ void open_view(void)
     // worth showing rather than offering to start a second one.
     switch (g_machine_bf) {
         case BF_CLEANING:
-            enter(VIEW_RUNNING, "Reinigung", "", false, "Schliessen");
+            enter(VIEW_RUNNING, "", "", false, "Schliessen");
             return;
         case BF_REQUESTED:
             enter(VIEW_WAITING, "Hebel bewegen",
@@ -137,13 +175,54 @@ void open_view(void)
           "Ohne Blindsieb spritzt das Wasser", true, "Abbrechen");
 }
 
-void show_elapsed(const char *headline, unsigned long since_ms)
+void show_running(void)
 {
-    unsigned long seconds = (millis() - since_ms) / 1000;
+    unsigned long elapsed_s = (millis() - g_state_since) / 1000;
     char buffer[32];
-    snprintf(buffer, sizeof(buffer), "%lu:%02lu", seconds / 60, seconds % 60);
-    lv_label_set_text(g_headline, headline);
-    lv_label_set_text(g_detail, buffer);
+
+    if (g_known_duration_s > 0) {
+        // The machine decides when it is done, so the countdown is a forecast,
+        // not a promise: it stops at zero and waits rather than going negative.
+        uint32_t left = (elapsed_s >= g_known_duration_s)
+                            ? 0 : (uint32_t)(g_known_duration_s - elapsed_s);
+        if (left > 0) {
+            snprintf(buffer, sizeof(buffer), "%lu:%02lu",
+                     (unsigned long)(left / 60), (unsigned long)(left % 60));
+        } else {
+            snprintf(buffer, sizeof(buffer), "%s", "gleich");
+        }
+        int32_t progress = (int32_t)((elapsed_s * 1000) / g_known_duration_s);
+        lv_arc_set_value(g_arc, progress > 1000 ? 1000 : progress);
+    } else {
+        snprintf(buffer, sizeof(buffer), "%lu:%02lu",
+                 elapsed_s / 60, elapsed_s % 60);
+    }
+    lv_label_set_text(g_headline, buffer);
+
+    // A caption that changes now and then, so a screen with nothing else
+    // moving on it still looks alive.
+    if (millis() - g_caption_since >= 4000) {
+        g_caption_since = millis();
+        g_caption_index = (uint8_t)((g_caption_index + 1) % CAPTION_COUNT);
+    }
+    lv_label_set_text(g_detail, CAPTIONS[g_caption_index]);
+}
+
+// Keeps what a finished cycle took, so the next one can be counted down. Very
+// short runs are not a cycle - the paddle was moved back, or it was cut short.
+void remember_duration(unsigned long ran_ms)
+{
+    uint32_t seconds = (uint32_t)(ran_ms / 1000);
+    if (seconds < 30 || seconds > 20 * 60) {
+        return;
+    }
+    if (seconds == g_known_duration_s) {
+        return;
+    }
+    g_known_duration_s = seconds;
+    preferences.putUInt("BF_SECS", seconds);
+    Serial.printf("[BACKFLUSH] Cycle took %lu s, remembered for the next one\n",
+                  (unsigned long)seconds);
 }
 
 // Runs inside the LVGL task, which already holds the GUI mutex.
@@ -160,7 +239,7 @@ void tick(lv_timer_t *)
         case VIEW_CONFIRM:
             // Someone started it elsewhere while this was on screen.
             if (bf == BF_CLEANING) {
-                enter(VIEW_RUNNING, "Reinigung", "", false, "Schliessen");
+                enter(VIEW_RUNNING, "", "", false, "Schliessen");
             } else if (bf == BF_REQUESTED) {
                 enter(VIEW_WAITING, "Hebel bewegen",
                       "Die Maschine wartet auf den Hebel", false, "Schliessen");
@@ -169,7 +248,7 @@ void tick(lv_timer_t *)
 
         case VIEW_WAITING:
             if (bf == BF_CLEANING) {
-                enter(VIEW_RUNNING, "Reinigung", "", false, "Schliessen");
+                enter(VIEW_RUNNING, "", "", false, "Schliessen");
                 break;
             }
             // The machine gives up on its own if the paddle stays untouched.
@@ -183,10 +262,11 @@ void tick(lv_timer_t *)
 
         case VIEW_RUNNING:
             if (bf == BF_OFF) {
+                remember_duration(millis() - g_state_since);
                 enter(VIEW_DONE, "Fertig", "", false, "Schliessen");
                 break;
             }
-            show_elapsed("Reinigung", g_state_since);
+            show_running();
             break;
 
         case VIEW_DONE:
@@ -284,8 +364,36 @@ void backflush_view_init(void)
     lv_label_set_text(g_detail, "");
     lv_obj_align(g_detail, LV_ALIGN_TOP_MID, 0, 100);
 
+    // Shown only while a cycle runs: the ring when its length is known from a
+    // previous run, the spinner when it is not.
+    g_arc = lv_arc_create(g_root);
+    lv_obj_set_size(g_arc, 100, 100);
+    lv_obj_align(g_arc, LV_ALIGN_TOP_MID, 0, 58);
+    lv_arc_set_rotation(g_arc, 270);
+    lv_arc_set_bg_angles(g_arc, 0, 360);
+    lv_arc_set_range(g_arc, 0, 1000);
+    lv_arc_set_value(g_arc, 0);
+    lv_obj_remove_style(g_arc, nullptr, LV_PART_KNOB);
+    lv_obj_clear_flag(g_arc, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_arc_width(g_arc, 10, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_arc_width(g_arc, 10, LV_PART_INDICATOR | LV_STATE_DEFAULT);
+    lv_obj_set_style_arc_color(g_arc, lv_color_hex(BOILER_ARC_COLOR_READY),
+                               LV_PART_INDICATOR | LV_STATE_DEFAULT);
+    show(g_arc, false);
+
+    g_spinner = lv_spinner_create(g_root, 1400, 70);
+    lv_obj_set_size(g_spinner, 100, 100);
+    lv_obj_align(g_spinner, LV_ALIGN_TOP_MID, 0, 58);
+    lv_obj_set_style_arc_width(g_spinner, 10, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_arc_width(g_spinner, 10, LV_PART_INDICATOR | LV_STATE_DEFAULT);
+    lv_obj_set_style_arc_color(g_spinner, lv_color_hex(BOILER_ARC_COLOR_READY),
+                               LV_PART_INDICATOR | LV_STATE_DEFAULT);
+    show(g_spinner, false);
+
     g_start_btn = make_button("Starten", -100, on_start, nullptr);
     g_close_btn = make_button("Schliessen", 100, on_close, &g_close_lbl);
+
+    g_known_duration_s = preferences.getUInt("BF_SECS", 0);
 
     g_timer = lv_timer_create(tick, 250, nullptr);
     lv_timer_pause(g_timer);
