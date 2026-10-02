@@ -57,6 +57,21 @@ int32_t g_max_flow_x100 = 100;   // never scale below 1.0 g/s, so a weak shot st
 int32_t g_max_weight_x10 = 200;  // ... and below 20 g
 float g_last_weight = 0.0f;
 
+// The highest reading so far in this shot. Coffee runs into the cup and never
+// back out, so the weight cannot fall - and the one thing that makes it look
+// as if it had is lifting the cup off, which the scale answers with zero. Taken
+// at face value that zero became the result of the shot.
+float g_peak_weight = 0.0f;
+
+// Every weight that reaches the display or the curve goes through here.
+float observed(float raw)
+{
+    if (raw > g_peak_weight) {
+        g_peak_weight = raw;
+    }
+    return g_peak_weight;
+}
+
 lv_obj_t *make_label(const lv_font_t *font, lv_color_t color)
 {
     lv_obj_t *label = lv_label_create(g_root);
@@ -289,6 +304,7 @@ void shot_view_start(void)
     g_max_flow_x100 = 100;
     g_max_weight_x10 = 200;
     g_last_weight = 0.0f;
+    g_peak_weight = 0.0f;
     g_dismiss_requested = false;
     g_showing_result = false;
     g_active = true;
@@ -314,7 +330,8 @@ void shot_view_tick(int64_t elapsed_ms)
         return;  // the caller decides whether to fall back to the plain timer
     }
 
-    g_last_weight = reading.weight_g;
+    float weight = observed(reading.weight_g);
+    g_last_weight = weight;
     g_flow_sum += reading.flow_g_per_s;
     g_flow_samples++;
 
@@ -323,7 +340,7 @@ void shot_view_tick(int64_t elapsed_ms)
     lv_label_set_text(g_time_value, buffer);
     lv_obj_align_to(g_time_unit, g_time_value, LV_ALIGN_OUT_RIGHT_BOTTOM, 4, -8);
 
-    snprintf(buffer, sizeof(buffer), "%.1f", reading.weight_g);
+    snprintf(buffer, sizeof(buffer), "%.1f", weight);
     lv_label_set_text(g_weight_value, buffer);
     lv_obj_align_to(g_weight_unit, g_weight_value, LV_ALIGN_OUT_RIGHT_BOTTOM, 4, -8);
 
@@ -341,7 +358,7 @@ void shot_view_tick(int64_t elapsed_ms)
     g_flow_samples = 0;
 
     int32_t flow_x100 = (int32_t)(flow * 100.0f);
-    int32_t weight_x10 = (int32_t)(reading.weight_g * 10.0f);
+    int32_t weight_x10 = (int32_t)(weight * 10.0f);
     if (flow_x100 < 0) flow_x100 = 0;
     if (weight_x10 < 0) weight_x10 = 0;
     if (flow_x100 > g_max_flow_x100) g_max_flow_x100 = flow_x100;
@@ -363,10 +380,10 @@ float shot_view_settle(void)
     uint32_t age_ms = 0;
     if (g_active && !g_showing_result &&
         scale_ble_last_reading(reading, age_ms) && age_ms < SCALE_READING_STALE_MS) {
-        g_last_weight = reading.weight_g;
+        g_last_weight = observed(reading.weight_g);
 
         char buffer[16];
-        snprintf(buffer, sizeof(buffer), "%.1f", reading.weight_g);
+        snprintf(buffer, sizeof(buffer), "%.1f", g_last_weight);
         lv_label_set_text(g_weight_value, buffer);
         lv_obj_align_to(g_weight_unit, g_weight_value, LV_ALIGN_OUT_RIGHT_BOTTOM, 4, -8);
     }
