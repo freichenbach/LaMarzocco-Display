@@ -21,6 +21,7 @@
 #include "scale_ble.h"
 #include "wifi_power.h"
 #include "shot_logger.h"
+#include "serial_console.h"
 
 Preferences preferences;
 LaMarzoccoClient* g_client = nullptr;
@@ -553,6 +554,10 @@ void loop()
   // Uploads the last finished shot if one is waiting. Runs here, not in the
   // LVGL task, because the HTTP request blocks.
   shot_logger_loop();
+
+  // Lets Preferences (e.g. HA_WEBHOOK) be set from the PlatformIO/VS Code
+  // serial monitor over USB, without the WiFi setup portal.
+  serial_console_loop();
   
   // Small delay to prevent watchdog issues, but keep loop responsive
   delay(10);
