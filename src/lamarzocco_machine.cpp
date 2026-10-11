@@ -3,6 +3,7 @@
 #include "boiler_display.h"
 #include "water_alarm.h"
 #include "brewing_display.h"
+#include "backflush_view.h"
 #include "activity_monitor.h"
 #include "update_screen.h"
 #include <ArduinoJson.h>
@@ -59,6 +60,7 @@ void LaMarzoccoMachine::_process_dashboard(JsonDocument& doc) {
         const char* steam_boiler_status = nullptr;
         int64_t steam_ready_time = 0;
         const char* steam_target_level = nullptr;
+        const char* backflush_status = nullptr;
         bool no_water_alarm = false;
         bool is_brewing = false;
         int64_t brewing_start_time = 0;
@@ -157,6 +159,16 @@ void LaMarzoccoMachine::_process_dashboard(JsonDocument& doc) {
                     Serial.print(", ReadyStartTime: ");
                     Serial.println((long long)steam_ready_time);
                 }
+                // Cleaning cycle. The status tells the three stages apart:
+                // Requested while the machine waits for the paddle, Cleaning
+                // while it runs, Off the rest of the time.
+                else if (strcmp(code, "CMBackFlush") == 0) {
+                    JsonObject output = widget["output"].as<JsonObject>();
+                    const char* status = output["status"];
+                    if (status) {
+                        backflush_status = status;
+                    }
+                }
                 // Check for NoWater alarm
                 else if (strcmp(code, "CMNoWater") == 0) {
                     Serial.println("💧 Found CMNoWater widget");
@@ -197,6 +209,11 @@ void LaMarzoccoMachine::_process_dashboard(JsonDocument& doc) {
         
         // Update water alarm state
         water_alarm_set(no_water_alarm);
+
+        // The cleaning view needs both: whether it may offer a start at all,
+        // and how far a running cycle has got.
+        bool powered_on = machine_status && strcmp(machine_status, "PoweredOn") == 0;
+        backflush_view_set_machine_state(powered_on, backflush_status);
         
         // Update brewing display
         brewing_display_update(is_brewing, brewing_start_time);
@@ -449,6 +466,23 @@ void LaMarzoccoMachine::request_stats_refresh() {
 
 void LaMarzoccoMachine::request_dashboard_refresh() {
     _dashboard_refresh_pending = true;
+}
+
+bool LaMarzoccoMachine::start_backflush() {
+    String serial = _client.get_serial_number();
+    if (serial.length() == 0) {
+        return false;
+    }
+
+    JsonDocument request;
+    request["enabled"] = true;
+
+    JsonDocument response;
+    bool success = _client.api_call("POST",
+                                     "/things/" + serial + "/command/CoffeeMachineBackFlushStartCleaning",
+                                     &request, &response);
+    debugln(success ? "Backflush requested" : "Failed to request a backflush");
+    return success;
 }
 
 bool LaMarzoccoMachine::refresh_dashboard() {

@@ -6,6 +6,7 @@
 #include "config.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include "shot_view.h"
 
 unsigned long timeUpdate = 0;
 unsigned long statusUpdate = 0;
@@ -196,6 +197,47 @@ void updateWiFiImages(void)
 }
 
 // Combined function to update both battery and WiFi images
+// Bluetooth marker for the scale, next to the WiFi icon. Created here rather
+// than in the generated screen code, so re-exporting the screens from
+// SquareLine Studio cannot drop it again.
+static lv_obj_t *g_scale_icon = nullptr;
+
+void updateScaleImage(void)
+{
+#if SCALE_BLE_ENABLED
+    // Shown exactly when the brewing view would weigh the shot: connected and
+    // reporting. So the symbol answers the question it is there for - will the
+    // next shot be weighed - rather than the weaker "is something paired".
+    bool ready = shot_view_available();
+
+    if (gui_mutex && xSemaphoreTake(gui_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        if (!g_scale_icon && ui_mainScreen) {
+            g_scale_icon = lv_label_create(ui_mainScreen);
+            lv_label_set_text(g_scale_icon, LV_SYMBOL_BLUETOOTH);
+            lv_obj_set_style_text_font(g_scale_icon, &lv_font_montserrat_20,
+                                       LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_text_color(g_scale_icon,
+                                        lv_color_hex(SHOT_VIEW_INK_COLOR),
+                                        LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_align(g_scale_icon, LV_ALIGN_CENTER);
+            // Left of the WiFi icon, which sits at x 156 on the same row.
+            lv_obj_set_x(g_scale_icon, 124);
+            lv_obj_set_y(g_scale_icon, -94);
+            lv_obj_add_flag(g_scale_icon, LV_OBJ_FLAG_HIDDEN);
+        }
+
+        if (g_scale_icon) {
+            if (ready) {
+                lv_obj_clear_flag(g_scale_icon, LV_OBJ_FLAG_HIDDEN);
+            } else {
+                lv_obj_add_flag(g_scale_icon, LV_OBJ_FLAG_HIDDEN);
+            }
+        }
+        xSemaphoreGive(gui_mutex);
+    }
+#endif
+}
+
 void updateStatusImages(void)
 {
     // Check if enough time has passed since last update (30 seconds)
@@ -204,6 +246,7 @@ void updateStatusImages(void)
     {
         updateBatteryImages();
         updateWiFiImages();
+        updateScaleImage();
         
         statusUpdate = millis();
         statusImagesInitialized = true;

@@ -6,6 +6,7 @@ bool updateDateTime(void);
 void updateBatteryImages(void);
 void updateWiFiImages(void);
 void updateStatusImages(void);
+void updateScaleImage(void);
 void updateShotCounters(uint32_t coffee_count, uint32_t flush_count);
 
 // Error handling and screen redirection

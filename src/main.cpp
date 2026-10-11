@@ -20,6 +20,7 @@
 #include "machine_actions.h"
 #include "scale_ble.h"
 #include "wifi_power.h"
+#include "backflush_view.h"
 #include "shot_logger.h"
 #include "serial_console.h"
 
@@ -655,6 +656,9 @@ void Task_LVGL(void *pvParameters)
   // Initialize brewing display system
   brewing_display_set_mutex((void*)gui_mutex);
   brewing_display_init();
+
+  // Cleaning cycle, reachable by tapping the flush counter
+  backflush_view_init();
 
   // Power and steam buttons show the state they switch
   control_buttons_init();

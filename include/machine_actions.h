@@ -7,6 +7,7 @@
 // the user asked for, and the main loop carries it out.
 void machine_action_request_power_toggle(void);
 void machine_action_request_steam_toggle(void);
+void machine_action_request_backflush(void);
 
 // Call from loop(): performs a pending action, if there is one.
 void machine_actions_process(void);

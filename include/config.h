@@ -77,6 +77,12 @@ static constexpr const char *NTP_SERVER = "pool.ntp.org";
 #define SHOT_FLOW_COLOR  0x4040FF
 #define SHOT_WEIGHT_COLOR  0xB06A00
 
+// Cleaning cycle. The machine waits for the paddle after the command and says
+// nothing when it gives up waiting, so the view needs a limit of its own; the
+// result stays on screen briefly before it closes itself.
+#define BACKFLUSH_REQUEST_TIMEOUT_MS  (2UL * 60UL * 1000UL)
+#define BACKFLUSH_DONE_LINGER_MS  (10UL * 1000UL)
+
 // Boiler arcs: heating up, and ready.
 #define BOILER_ARC_COLOR_HEATING  0x4040FF
 #define BOILER_ARC_COLOR_READY    0x2FBF4F
