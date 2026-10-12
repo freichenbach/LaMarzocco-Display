@@ -47,9 +47,13 @@ String make_shot_id()
 // strict JSON parsers - cheap to guard against here since only flow_g_per_s
 // is passed through from the scale without having gone through a divide
 // that is already guarded (unlike the average in shot_view.cpp).
+// Also rounds to 2 decimals: full float precision (e.g. "0.779091") adds
+// nothing useful here and bloats the payload once SHOT_SAMPLE_INTERVAL_MS
+// gives a shot several hundred samples.
 float finite_or(float value, float fallback)
 {
-    return std::isfinite(value) ? value : fallback;
+    float v = std::isfinite(value) ? value : fallback;
+    return roundf(v * 100.0f) / 100.0f;
 }
 
 }  // namespace

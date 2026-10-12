@@ -51,11 +51,23 @@ bool g_dismiss_requested = false;
 
 uint16_t g_point_index = 0;
 uint32_t g_last_sample_ms = 0;
-float g_flow_sum = 0.0f;
-uint16_t g_flow_samples = 0;
 int32_t g_max_flow_x100 = 100;   // never scale below 1.0 g/s, so a weak shot still reads
 int32_t g_max_weight_x10 = 200;  // ... and below 20 g
 float g_last_weight = 0.0f;
+
+// Flow, smoothed over real time (not over however many ticks happen to land
+// in one sample interval - see SHOT_FLOW_EMA_TAU_S) so a shorter sample
+// interval does not mean a noisier curve.
+float g_flow_ema = 0.0f;
+uint32_t g_last_flow_update_ms = 0;
+
+// Rejects a lifted-cup style glitch before it reaches the display, the
+// curve or the flow average - see SHOT_WEIGHT_JUMP_LIMIT_G in config.h.
+float g_last_accepted_raw_weight = 0.0f;
+float g_jump_candidate_weight = 0.0f;
+uint8_t g_jump_consistent_streak = 0;
+
+bool g_first_sample_logged = false;
 
 // The highest reading so far in this shot. Coffee runs into the cup and never
 // back out, so the weight cannot fall - and the one thing that makes it look
@@ -297,10 +309,18 @@ void shot_view_start(void)
     lv_chart_set_point_count(g_chart, SHOT_CHART_POINTS);
     lv_chart_set_all_value(g_chart, g_series_flow, LV_CHART_POINT_NONE);
     lv_chart_set_all_value(g_chart, g_series_weight, LV_CHART_POINT_NONE);
-    g_point_index = 0;
+    // Known boundary condition - the scale tares itself on shot detection
+    // (see start_brewing()) - rather than whatever the first real reading
+    // turns out to be, which can be several hundred ms to some seconds in.
+    g_raw_samples[0] = { 0.0f, 0.0f, 0.0f };
+    g_point_index = 1;
     g_last_sample_ms = millis();
-    g_flow_sum = 0.0f;
-    g_flow_samples = 0;
+    g_flow_ema = 0.0f;
+    g_last_flow_update_ms = 0;
+    g_last_accepted_raw_weight = 0.0f;
+    g_jump_candidate_weight = 0.0f;
+    g_jump_consistent_streak = 0;
+    g_first_sample_logged = false;
     g_max_flow_x100 = 100;
     g_max_weight_x10 = 200;
     g_last_weight = 0.0f;
@@ -330,10 +350,56 @@ void shot_view_tick(int64_t elapsed_ms)
         return;  // the caller decides whether to fall back to the plain timer
     }
 
+    // A lifted cup (usually right after the pump stops, before the cloud's
+    // stop event has arrived to end ACTIVE) answers with a large jump, often
+    // negative. Reject it rather than let it into the display, the flow
+    // average or the curve - but don't reject forever: if the next several
+    // readings agree with each other (not with the old baseline), that is a
+    // real new weight - the cup placed late, say - not a glitch.
+    bool implausible = reading.weight_g < SHOT_WEIGHT_NEG_LIMIT_G ||
+                        fabsf(reading.weight_g - g_last_accepted_raw_weight) > SHOT_WEIGHT_JUMP_LIMIT_G;
+    if (implausible) {
+        if (g_jump_consistent_streak > 0 &&
+            fabsf(reading.weight_g - g_jump_candidate_weight) < SHOT_WEIGHT_RECOVER_DELTA_G) {
+            g_jump_consistent_streak++;
+        } else {
+            g_jump_candidate_weight = reading.weight_g;
+            g_jump_consistent_streak = 1;
+        }
+        if (g_jump_consistent_streak < SHOT_WEIGHT_RECOVER_SAMPLES) {
+            return;  // still looks like a glitch - wait for more agreement
+        }
+        // SHOT_WEIGHT_RECOVER_SAMPLES in a row agree: treat it as the new
+        // baseline and process this reading normally below.
+        g_jump_consistent_streak = 0;
+    } else {
+        g_jump_consistent_streak = 0;
+    }
+    g_last_accepted_raw_weight = reading.weight_g;
+
+    if (!g_first_sample_logged) {
+        g_first_sample_logged = true;
+        Serial.printf("[ShotView] First accepted scale reading at elapsed_ms=%lld (age_ms=%u, weight=%.2fg)\n",
+                      (long long)elapsed_ms, age_ms, reading.weight_g);
+    }
+
     float weight = observed(reading.weight_g);
     g_last_weight = weight;
-    g_flow_sum += reading.flow_g_per_s;
-    g_flow_samples++;
+
+    // Smoothed over real elapsed time (not over ticks), so it stays steady
+    // regardless of how often a tick actually lands or how dense the
+    // emitted samples are - see SHOT_FLOW_EMA_TAU_S.
+    uint32_t now = millis();
+    if (g_last_flow_update_ms == 0) {
+        g_flow_ema = reading.flow_g_per_s;
+    } else {
+        float dt_s = (now - g_last_flow_update_ms) / 1000.0f;
+        if (dt_s > 0.0f) {
+            float alpha = 1.0f - expf(-dt_s / SHOT_FLOW_EMA_TAU_S);
+            g_flow_ema = alpha * reading.flow_g_per_s + (1.0f - alpha) * g_flow_ema;
+        }
+    }
+    g_last_flow_update_ms = now;
 
     char buffer[16];
     snprintf(buffer, sizeof(buffer), "%.1f", (float)(elapsed_ms / 100) / 10.0f);
@@ -347,24 +413,19 @@ void shot_view_tick(int64_t elapsed_ms)
     snprintf(buffer, sizeof(buffer), "%.2f g/s", reading.flow_g_per_s);
     lv_label_set_text(g_flow_value, buffer);
 
-    uint32_t now = millis();
     if (now - g_last_sample_ms < SHOT_SAMPLE_INTERVAL_MS || g_point_index >= SHOT_CHART_POINTS) {
         return;
     }
     g_last_sample_ms = now;
 
-    float flow = (g_flow_samples > 0) ? (g_flow_sum / g_flow_samples) : 0.0f;
-    g_flow_sum = 0.0f;
-    g_flow_samples = 0;
-
-    int32_t flow_x100 = (int32_t)(flow * 100.0f);
+    int32_t flow_x100 = (int32_t)(g_flow_ema * 100.0f);
     int32_t weight_x10 = (int32_t)(weight * 10.0f);
     if (flow_x100 < 0) flow_x100 = 0;
     if (weight_x10 < 0) weight_x10 = 0;
     if (flow_x100 > g_max_flow_x100) g_max_flow_x100 = flow_x100;
     if (weight_x10 > g_max_weight_x10) g_max_weight_x10 = weight_x10;
 
-    g_raw_samples[g_point_index] = { (float)elapsed_ms / 1000.0f, reading.weight_g, flow };
+    g_raw_samples[g_point_index] = { (float)elapsed_ms / 1000.0f, weight, g_flow_ema };
 
     lv_chart_set_value_by_id(g_chart, g_series_flow, g_point_index, flow_x100);
     lv_chart_set_value_by_id(g_chart, g_series_weight, g_point_index, weight_x10);

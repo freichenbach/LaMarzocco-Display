@@ -59,9 +59,27 @@ static constexpr const char *NTP_SERVER = "pool.ntp.org";
 
 // Shot view: one chart point per interval, so the points cover
 // SHOT_CHART_POINTS * SHOT_SAMPLE_INTERVAL_MS of brewing.
-#define SHOT_SAMPLE_INTERVAL_MS  500
-#define SHOT_CHART_POINTS  120
+#define SHOT_SAMPLE_INTERVAL_MS  150
+#define SHOT_CHART_POINTS  400
 #define SHOT_RESULT_MS  (15UL * 1000UL)
+
+// A raw scale reading this far from the last accepted one (or any reading
+// below SHOT_WEIGHT_NEG_LIMIT_G) is treated as a glitch - typically the cup
+// being lifted off mid-shot, before the cloud's stop event arrives - and
+// discarded rather than recorded. SHOT_WEIGHT_RECOVER_SAMPLES consecutive
+// readings that agree with each other within SHOT_WEIGHT_RECOVER_DELTA_G
+// are accepted as a new baseline instead of being discarded forever, so a
+// real jump (the cup placed late, say) does not lock up recording for the
+// rest of the shot.
+#define SHOT_WEIGHT_JUMP_LIMIT_G  20.0f
+#define SHOT_WEIGHT_NEG_LIMIT_G  (-1.0f)
+#define SHOT_WEIGHT_RECOVER_SAMPLES  5
+#define SHOT_WEIGHT_RECOVER_DELTA_G  2.0f
+
+// Time constant of the flow's exponential moving average - smooths the
+// curve independently of how often a sample is emitted, so a shorter
+// SHOT_SAMPLE_INTERVAL_MS does not mean a noisier flow reading.
+#define SHOT_FLOW_EMA_TAU_S  0.75f
 
 // The pump stops before the cup is full: coffee keeps dripping through the
 // puck for a moment afterwards. Keep reading the scale until the weight holds
