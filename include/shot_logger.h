@@ -9,7 +9,12 @@
 
 // One BOOKOO scale sample captured during a shot. Plain floats so the raw
 // values can be serialised, rather than the chart's fixed-point storage.
+// t_s is the real elapsed time the sample was taken at - samples are not
+// guaranteed to be exactly SHOT_SAMPLE_INTERVAL_MS apart (that is a minimum
+// gate, not a clock), so reconstructing it from the array index understates
+// the shot's real duration whenever a tick is skipped or delayed.
 struct ShotLogSample {
+    float t_s;
     float weight_g;
     float flow_g_per_s;
 };

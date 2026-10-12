@@ -364,7 +364,7 @@ void shot_view_tick(int64_t elapsed_ms)
     if (flow_x100 > g_max_flow_x100) g_max_flow_x100 = flow_x100;
     if (weight_x10 > g_max_weight_x10) g_max_weight_x10 = weight_x10;
 
-    g_raw_samples[g_point_index] = { reading.weight_g, flow };
+    g_raw_samples[g_point_index] = { (float)elapsed_ms / 1000.0f, reading.weight_g, flow };
 
     lv_chart_set_value_by_id(g_chart, g_series_flow, g_point_index, flow_x100);
     lv_chart_set_value_by_id(g_chart, g_series_weight, g_point_index, weight_x10);
@@ -434,6 +434,16 @@ void shot_view_finish(int64_t elapsed_ms)
     g_showing_result = true;
     layout_result();
     lv_chart_refresh(g_chart);
+
+    // g_last_weight may have grown during the settle wait (shot_view_settle()),
+    // after the last sample was recorded here - without this, the uploaded
+    // curve's last point reads lighter than final_weight_g by whatever
+    // dripped through in that time. Closing it here, not in the chart series,
+    // leaves what is drawn on screen untouched.
+    if (g_point_index < SHOT_CHART_POINTS) {
+        g_raw_samples[g_point_index] = { seconds, g_last_weight, 0.0f };
+        g_point_index++;
+    }
 
     // Handed off for an asynchronous upload - see shot_logger.h for why this
     // cannot POST directly from here (the LVGL task, holding gui_mutex).

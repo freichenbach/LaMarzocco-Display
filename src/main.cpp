@@ -22,6 +22,7 @@
 #include "wifi_power.h"
 #include "backflush_view.h"
 #include "shot_logger.h"
+#include "shot_upload_status.h"
 #include "serial_console.h"
 
 Preferences preferences;
@@ -555,6 +556,9 @@ void loop()
   // Uploads the last finished shot if one is waiting. Runs here, not in the
   // LVGL task, because the HTTP request blocks.
   shot_logger_loop();
+
+  // Clears the upload status line once its time is up.
+  shot_upload_status_loop();
 
   // Lets Preferences (e.g. HA_WEBHOOK) be set from the PlatformIO/VS Code
   // serial monitor over USB, without the WiFi setup portal.

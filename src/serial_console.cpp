@@ -15,7 +15,7 @@ String g_line;
 void print_usage()
 {
     Serial.println("[Console] Commands:");
-    Serial.println("[Console]   set <KEY> <value>   e.g. set HA_WEBHOOK http://192.168.5.42:8123/api/webhook/...");
+    Serial.println("[Console]   set <KEY> <value>   e.g. set HA_WEBHOOK http://homeassistant.local:8123/api/webhook/...");
     Serial.println("[Console]   get <KEY>            e.g. get HA_WEBHOOK");
 }
 

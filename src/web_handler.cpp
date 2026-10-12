@@ -131,8 +131,10 @@ void sendStatus(void)
     jsonDoc["wifi"] = preferences.getString("SSID", "N/A");
     jsonDoc["email"] = maskEmail(preferences.getString("USER_EMAIL", ""));
     jsonDoc["machine"] = maskSerial(preferences.getString("MACHINE", ""));
-    // Not a secret, just a local address - shown in full so it can be edited.
-    jsonDoc["ha_webhook"] = preferences.getString("HA_WEBHOOK", "");
+    // Whoever knows this URL can write fake shots into the user's Home
+    // Assistant - a bearer secret, not a public address. Write-only, like
+    // USER_PASS: the page shows only whether one is set.
+    jsonDoc["ha_webhook_set"] = preferences.getString("HA_WEBHOOK", "").length() > 0;
     String jsonString;
     serializeJson(jsonDoc, jsonString);
     server.send(200, "application/json", jsonString);
@@ -208,8 +210,21 @@ void saveMachineHandler(void)
 void saveLoggingHandler(void)
 {
     // Read on every upload attempt (shot_logger.cpp), not cached at boot, so
-    // this takes effect immediately - no restart needed.
-    if (!storeField("HA_WEBHOOK", server.arg("ha_webhook"), 128)) return;
+    // either change below takes effect immediately - no restart needed.
+    if (server.arg("disable") == "1") {
+        preferences.putString("HA_WEBHOOK", "");
+        streamFile("/status.html");
+        return;
+    }
+
+    // The field is never pre-filled with the current value (it is a secret,
+    // see sendStatus()), so an empty submit means "leave it as is", not
+    // "clear it" - otherwise just opening and saving the status page without
+    // touching this field would wipe out a working webhook.
+    String value = server.arg("ha_webhook");
+    if (value.length() > 0) {
+        if (!storeField("HA_WEBHOOK", value, 128)) return;
+    }
     streamFile("/status.html");
 }
 

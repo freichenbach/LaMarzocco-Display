@@ -1,5 +1,6 @@
 #include "shot_logger.h"
 #include "config.h"
+#include "shot_upload_status.h"
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -7,6 +8,8 @@
 #include <WiFi.h>
 #include <Preferences.h>
 #include <time.h>
+#include <cmath>
+#include <esp_random.h>
 
 extern Preferences preferences;
 
@@ -32,7 +35,21 @@ String make_shot_id()
         strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &utc);
         return String(buffer);
     }
-    return "boot" + String(millis());
+    // millis() restarts at 0 on every boot, so two shots pulled this early
+    // after two different reboots (a flaky WiFi/power situation, repeatedly
+    // rebooting before NTP answers) could otherwise land on the same id and
+    // overwrite each other in InfluxDB. The random prefix makes that a
+    // non-issue without needing the clock.
+    return "boot" + String(esp_random(), HEX) + "-" + String(millis());
+}
+
+// ArduinoJson writes NaN/Infinity as bare, non-standard tokens that break
+// strict JSON parsers - cheap to guard against here since only flow_g_per_s
+// is passed through from the scale without having gone through a divide
+// that is already guarded (unlike the average in shot_view.cpp).
+float finite_or(float value, float fallback)
+{
+    return std::isfinite(value) ? value : fallback;
 }
 
 }  // namespace
@@ -71,6 +88,7 @@ void shot_logger_loop(void)
     }
     if (WiFi.status() != WL_CONNECTED) {
         Serial.println("[ShotLogger] No WiFi, dropping shot log");
+        shot_upload_status_show(false, "Shot-Upload: kein WLAN");
         return;
     }
 
@@ -86,9 +104,9 @@ void shot_logger_loop(void)
     JsonArray samples = doc["samples"].to<JsonArray>();
     for (uint16_t i = 0; i < g_sample_count; i++) {
         JsonObject sample = samples.add<JsonObject>();
-        sample["t_s"] = (float)(i * SHOT_SAMPLE_INTERVAL_MS) / 1000.0f;
-        sample["weight_g"] = g_samples[i].weight_g;
-        sample["flow_g_per_s"] = g_samples[i].flow_g_per_s;
+        sample["t_s"] = finite_or(g_samples[i].t_s, 0.0f);
+        sample["weight_g"] = finite_or(g_samples[i].weight_g, 0.0f);
+        sample["flow_g_per_s"] = finite_or(g_samples[i].flow_g_per_s, 0.0f);
     }
 
     String body;
@@ -98,11 +116,20 @@ void shot_logger_loop(void)
     http.begin(webhook_url);
     http.addHeader("Content-Type", "application/json");
     int http_code = http.POST(body);
-    if (http_code > 0) {
+    if (http_code == HTTP_CODE_OK) {
         Serial.printf("[ShotLogger] Uploaded shot, HTTP %d\n", http_code);
+        shot_upload_status_show(true, "Shot gesendet");
+    } else if (http_code > 0) {
+        // A response came back, just not the one that means HA accepted it -
+        // a 4xx/5xx here used to be logged identically to success.
+        Serial.printf("[ShotLogger] Upload rejected, HTTP %d\n", http_code);
+        char message[48];
+        snprintf(message, sizeof(message), "Shot-Upload fehlgeschlagen (HTTP %d)", http_code);
+        shot_upload_status_show(false, message);
     } else {
         Serial.printf("[ShotLogger] Upload failed: %s (%d)\n",
                       HTTPClient::errorToString(http_code).c_str(), http_code);
+        shot_upload_status_show(false, "Shot-Upload fehlgeschlagen");
     }
     http.end();
 }

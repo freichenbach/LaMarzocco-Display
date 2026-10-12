@@ -77,6 +77,12 @@ static constexpr const char *NTP_SERVER = "pool.ntp.org";
 #define SHOT_FLOW_COLOR  0x4040FF
 #define SHOT_WEIGHT_COLOR  0xB06A00
 
+// Shot upload status line on the main screen: how long it stays up after a
+// shot_logger upload attempt, success or failure.
+#define SHOT_UPLOAD_STATUS_MS  (5UL * 1000UL)
+#define SHOT_UPLOAD_OK_COLOR  0x2FBF4F
+#define SHOT_UPLOAD_ERROR_COLOR  0xD03A3A
+
 // Cleaning cycle. The machine waits for the paddle after the command and says
 // nothing when it gives up waiting, so the view needs a limit of its own; the
 // result stays on screen briefly before it closes itself.

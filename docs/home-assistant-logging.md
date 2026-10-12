@@ -30,6 +30,19 @@ that setpoint at the moment the shot finished. Section 1 below adds an
 *estimated* pressure line computed from the flow we do have - it is not a
 measurement, see the note there.
 
+`samples[].t_s` is the real elapsed time each sample was taken at (not every
+sample is exactly `SHOT_SAMPLE_INTERVAL_MS` apart - that is a minimum gate,
+and a slow tick under WiFi/BLE radio contention can widen it). The last
+sample is always a synthetic closing point at `t_s == duration_s`, with
+`weight_g == final_weight_g` and `flow_g_per_s == 0` - without it the curve's
+last real sample reads lighter than `final_weight_g` by whatever dripped
+through while the firmware waited for the weight to settle after the pump
+stopped. `duration_s` itself stays the machine's pump-on time and does *not*
+include that settle wait (deliberately - see `SHOT_SETTLE_*` in
+`include/config.h`), so `avg_flow_g_per_s = final_weight_g / duration_s` runs
+slightly high: it is "settled weight over pump time", not a true average
+of the flow curve.
+
 ## 1. Webhook -> InfluxDB (the curve)
 
 ```yaml
