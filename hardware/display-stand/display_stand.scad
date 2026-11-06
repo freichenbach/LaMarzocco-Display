@@ -21,7 +21,7 @@ case_l = 58;    // length - horizontal when mounted
 case_h = 30;    // height - vertical when mounted (rail-to-rail span)
 case_t = 10;    // thickness (front-to-back)
 
-cable_exit_right = true;  // false swaps the open end to the left
+cable_exit_right = false;  // false swaps the open end to the left
 
 // ---------- Cradle (holds the case by its edges) ----------
 slot_clearance  = 0.4;   // extra depth/height so the case slides in freely
