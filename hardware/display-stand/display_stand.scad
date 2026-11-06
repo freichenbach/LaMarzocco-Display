@@ -40,12 +40,22 @@ base_t        = magnet_hole_h + magnet_floor;   // 9.3 mm
 magnet_inset  = 7;       // pocket center distance from each base edge
 
 // ---------- Base & stand ----------
-base_w       = 74;       // wide enough for the now-horizontal frame
+base_w       = 80;       // wide enough for the now-horizontal frame, with
+                          // room either side for the magnets (see the
+                          // assert below)
 base_d       = 50;
 tilt_angle   = 60;       // degrees from horizontal - adjust to taste
 strut_len    = 30;       // length of the angled support, base to cradle
-strut_w      = 24;       // width of the (single, centered) support pedestal
-strut_t      = 6;        // its thickness (front-to-back)
+// The strut holds up the frame's bottom rail, which runs horizontally -
+// unlike the portrait version, post and rail are NOT inline here, so a
+// narrow central post would leave both ends of the rail cantilevered in
+// mid-air (~19 mm unsupported on each side at frame_len=62, strut_w=24 -
+// well past what FDM bridges without sagging or needing support). Instead
+// strut_w spans almost the full frame width, turning the "post" into a
+// wide, thin, continuously-supported wall instead of a point support.
+strut_w      = 54;       // width of the support wall (leaves 4 mm clear on
+                          // each side of the frame, see the assert below)
+strut_t      = 8;        // its thickness (front-to-back)
 strut_foot_y = 20;       // where the strut leaves the base, measured from
                           // the front edge (y=0)
 strut_sink   = 6;        // how far the tilt pivot sits below the base's
@@ -59,15 +69,25 @@ frame_len = case_l + frame_margin;        // + frame_margin = the closed cap;
                                            // the open end needs no extra
                                            // margin, it's open
 
-// Sanity check (visible in the console on every render): the magnet
-// pockets must clear the strut pedestal in Y, since the pedestal is buried
-// into the base right between/near the front and back pocket rows.
+// Sanity checks (visible in the console on every render): the strut must
+// reach close enough to the frame's own width to avoid a long unsupported
+// overhang on the rail (print-only concern - OpenSCAD can't tell you a
+// shape is hard to print, so this just catches a config that reintroduces
+// the original mistake), and the magnet pockets must clear the strut in
+// both X and Y.
+max_rail_overhang = 8;   // mm of unsupported rail on each side considered
+                          // safe to print without support
+assert(frame_len/2 - strut_w/2 <= max_rail_overhang,
+    "strut_w too narrow for frame_len - the bottom rail would overhang more than max_rail_overhang unsupported on each side");
+
 pedestal_front_y = strut_foot_y - strut_t/2;
 pedestal_back_y  = strut_foot_y + strut_t/2;
 assert(pedestal_front_y > magnet_inset + magnet_hole_d/2,
-    "strut pedestal overlaps the front magnet row - move strut_foot_y back or shrink strut_t");
+    "strut overlaps the front magnet row in Y - move strut_foot_y back or shrink strut_t");
 assert(pedestal_back_y < base_d - magnet_inset - magnet_hole_d/2,
-    "strut pedestal overlaps the back magnet row - move strut_foot_y forward or shrink strut_t");
+    "strut overlaps the back magnet row in Y - move strut_foot_y forward or shrink strut_t");
+assert(base_w/2 - magnet_inset - magnet_hole_d/2 > strut_w/2,
+    "strut overlaps a magnet pocket in X - widen base_w, shrink strut_w, or increase magnet_inset");
 
 module board_cradle_right() {
     // Built directly in final mounted orientation (pre-tilt): x =
