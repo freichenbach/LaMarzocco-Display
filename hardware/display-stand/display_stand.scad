@@ -35,8 +35,13 @@ magnet_d      = 5.0;
 magnet_h      = 8.47;
 magnet_hole_d = 5.3;     // press-fit clearance
 magnet_hole_h = 8.7;
-magnet_floor  = 0.6;     // plastic skin between magnet and machine surface
-base_t        = magnet_hole_h + magnet_floor;   // 9.3 mm
+// A thin (sub-1mm) floor is also an unreliable print - the first few
+// layers over a pocket that size can come out pinholed or uneven. 2mm
+// prints solidly and keeps the magnet from directly touching (and
+// scratching) the machine, at the cost of a bit of pull - still far more
+// than needed for this stand's weight.
+magnet_floor  = 2;       // plastic skin between magnet and machine surface
+base_t        = magnet_hole_h + magnet_floor;   // 10.7 mm
 magnet_inset  = 7;       // pocket center distance from each base edge
 
 // ---------- Base & stand ----------

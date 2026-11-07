@@ -14,9 +14,10 @@ adhesive on the machine.
   ~1.1 kg pull each - roughly 4.4 kg combined, far more than the stand and
   case weigh). A different magnet size works too - edit `magnet_d` and
   `magnet_h` in `display_stand.scad` and re-render.
-- A 3D printer, PLA or PETG. No supports needed if you orient the part with
-  the cradle's flat back face down on the bed (rotate it in your slicer -
-  the file itself is exported standing up, matching how it's used).
+- A 3D printer, PLA or PETG. Print it as exported (base down, matching how
+  it's used) - no supports needed: the 60° tilt is gentle enough for an
+  unsupported lean, and the wide support wall under the frame (not a
+  narrow post) means the rail has no unsupported overhang either.
 
 ## How it holds the case
 
@@ -55,10 +56,11 @@ different magnets, etc. Re-render after changes:
 openscad --render -o display_stand.stl display_stand.scad
 ```
 
-Two `assert()`s near the top check that the magnet pockets don't overlap
-the strut pedestal if you change the base size, strut position, or magnet
-spacing - they'll fail loudly with an explanation rather than silently
-producing a broken part.
+A few `assert()`s near the top check that the magnet pockets don't overlap
+the support wall if you change the base size, wall position, or magnet
+spacing, and that the wall stays close enough to the frame's own width to
+avoid an unsupported overhang on the rail - they'll fail loudly with an
+explanation rather than silently producing a broken or unprintable part.
 
 ## Printing & assembly
 
@@ -67,7 +69,10 @@ producing a broken part.
 2. Press the 4 magnets into the pockets on the underside of the base
    (friction fit, ~5.3 mm holes for 5 mm magnets). Mind polarity isn't
    relevant here since there's nothing to match it against, just press
-   them in flush.
+   them in flush. Each pocket has a 2 mm printed floor - the magnets don't
+   touch the machine directly, so the finish doesn't get scratched and the
+   pull is a bit gentler than bare-metal contact (still comfortably enough
+   to hold this stand).
 3. Slide the cased display in from the open (cable) side until it seats
    against the closed cap.
 4. Set the stand on the machine's steel body wherever you can read it.
