@@ -24,6 +24,15 @@ adhesive on the machine.
   add supports under the wedge, it doesn't need them; turning them off is
   safe.)
 
+The wedge's slope starts right at the base's own front edge rather than
+partway in, so there's no flat, unsupported stretch behind it either - and
+`strut_len` (how far it rises before the frame begins) is computed, not
+hand-picked, as the shortest rise that still keeps the frame's lowest
+corner from dipping below the base. Combined with a base sized to just
+clear the magnets and the tilted frame's own footprint, this keeps the
+model's overall height and footprint - and so its print time - as small as
+the design allows.
+
 ## How it holds the case
 
 The case (58 x 30 x 10 mm, measured by hand) slides in from the right-hand

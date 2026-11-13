@@ -45,12 +45,19 @@ base_t        = magnet_hole_h + magnet_floor;   // 10.7 mm
 magnet_inset  = 7;       // pocket center distance from each base edge
 
 // ---------- Base & stand ----------
-base_w       = 80;       // wide enough for the now-horizontal frame, with
-                          // room either side for the magnets (see the
-                          // assert below)
-base_d       = 50;
+base_w       = 78;       // just wide enough for the magnets to clear the
+                          // wedge in X, plus a small margin (see the
+                          // assert below) - also comfortably wider than
+                          // frame_len, so the rail has no unsupported
+                          // reach past the base's own edge either
+base_d       = 37;       // just deep enough that the tilted frame's own
+                          // back corner (see support_wedge()) still lands
+                          // on the base, so nothing overhangs past its
+                          // back edge - found by rendering and checking
+                          // the model's bounding box, not derived
 tilt_angle   = 60;       // degrees from horizontal - adjust to taste
-strut_len    = 30;       // height of the wedge, base to the frame's bottom
+strut_len_margin = 0.5;  // mm of slack kept above the computed minimum,
+                          // see strut_len below
 // The wedge holds up the frame's bottom rail, which runs horizontally -
 // unlike a portrait layout, support and rail are NOT inline here, so a
 // narrow post (or a thin wall, tried and printed twice, both times
@@ -65,8 +72,10 @@ strut_w      = 54;       // width of the wedge (leaves 4 mm clear on each
                           // side of the frame, see the assert below)
 strut_t      = 8;        // depth of the wedge's foot, where it meets the
                           // base (front-to-back)
-strut_foot_y = 20;       // where the wedge's foot sits on the base,
-                          // measured from the front edge (y=0)
+strut_foot_y = strut_t/2; // the foot's own front face flush with the
+                          // base's front edge (y=0) - the slope starts
+                          // right there, so nothing behind it is ever
+                          // left open/unsupported
 strut_sink   = 6;        // how far the tilt pivot sits below the base's
                           // top face - keeps the frame's own join to the
                           // wedge solid and gap-free regardless of
@@ -79,25 +88,52 @@ frame_len = case_l + frame_margin;        // + frame_margin = the closed cap;
                                            // the open end needs no extra
                                            // margin, it's open
 
+// strut_len (how far the wedge rises, pre-tilt, before the frame starts)
+// is computed rather than hand-tuned: it's the smallest value that still
+// keeps the frame's own lowest corner (the back-bottom edge of its depth
+// channel, at y=frame_depth, z=0 locally) at or above the base's bottom
+// face once tilted - any smaller and that corner pokes out below z=0,
+// which a slicer would simply clip off. Keeping this at its minimum is
+// what keeps the whole stand as short - and so as fast to print - as
+// tilt_angle allows.
+tilt_theta = -(90 - tilt_angle);
+strut_len_min = (strut_sink - base_t - frame_depth * sin(tilt_theta)) / cos(tilt_theta);
+strut_len = strut_len_min + strut_len_margin;
+
 // Sanity checks (visible in the console on every render): the wedge must
 // reach close enough to the frame's own width to avoid a long unsupported
 // overhang on the rail (print-only concern - OpenSCAD can't tell you a
 // shape is hard to print, so this just catches a config that reintroduces
 // the original mistake), and the magnet pockets must clear the wedge's
-// foot in both X and Y.
+// foot - checked as an actual rectangle-to-circle distance, not separate
+// X/Y checks, since the foot now starts flush with the front edge and
+// sits close to the front magnet row in Y, kept clear only because it is
+// narrower than the magnets' X spacing.
 max_rail_overhang = 8;   // mm of unsupported rail on each side considered
                           // safe to print without support
 assert(frame_len/2 - strut_w/2 <= max_rail_overhang,
     "strut_w too narrow for frame_len - the bottom rail would overhang more than max_rail_overhang unsupported on each side");
 
+assert(tilt_angle > 0 && tilt_angle < 90,
+    "tilt_angle must be between 0 and 90 (degrees from horizontal) - the strut_len formula above assumes that range");
+
 wedge_foot_front_y = strut_foot_y - strut_t/2;
 wedge_foot_back_y  = strut_foot_y + strut_t/2;
-assert(wedge_foot_front_y > magnet_inset + magnet_hole_d/2,
-    "wedge foot overlaps the front magnet row in Y - move strut_foot_y back or shrink strut_t");
-assert(wedge_foot_back_y < base_d - magnet_inset - magnet_hole_d/2,
-    "wedge foot overlaps the back magnet row in Y - move strut_foot_y forward or shrink strut_t");
-assert(base_w/2 - magnet_inset - magnet_hole_d/2 > strut_w/2,
-    "wedge foot overlaps a magnet pocket in X - widen base_w, shrink strut_w, or increase magnet_inset");
+min_pocket_wall = 1.0;    // minimum plastic left between a magnet pocket
+                          // and the wedge foot
+
+function rect_point_dist(xmin, xmax, ymin, ymax, px, py) =
+    let(dx = max(max(xmin - px, px - xmax), 0),
+        dy = max(max(ymin - py, py - ymax), 0))
+    sqrt(dx*dx + dy*dy);
+
+magnet_xs = [-(base_w/2 - magnet_inset), (base_w/2 - magnet_inset)];
+magnet_ys = [magnet_inset, base_d - magnet_inset];
+for (mx = magnet_xs)
+    for (my = magnet_ys)
+        assert(rect_point_dist(-strut_w/2, strut_w/2, wedge_foot_front_y, wedge_foot_back_y, mx, my)
+                   > magnet_hole_d/2 + min_pocket_wall,
+            "wedge foot comes too close to a magnet pocket - widen base_w, narrow strut_w, or move the pocket (magnet_inset)");
 
 module board_cradle_right() {
     // Built directly in final mounted orientation (pre-tilt): x =
