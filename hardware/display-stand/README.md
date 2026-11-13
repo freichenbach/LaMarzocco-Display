@@ -42,6 +42,14 @@ washed-out or near-invisible. Press F6 (or pass `--render` on the command
 line, as `preview.png` is) for the real, fully-computed geometry before
 judging whether something looks off.
 
+The front wedge only holds up the frame's bottom edge, though - tilted
+back, the frame's top leans further back and higher still, with nothing
+underneath it but its own rigidity. A second, shorter wedge (`back_wall()`
+in `display_stand.scad`) braces it from the base's back edge up to the
+frame's top, the same way and for the same reason as the front one, so
+the frame is held at both ends rather than cantilevered from the front
+alone.
+
 ## How it holds the case
 
 The case (58 x 30 x 10 mm, measured by hand) slides in from the right-hand

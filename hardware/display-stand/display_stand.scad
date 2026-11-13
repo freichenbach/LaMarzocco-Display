@@ -87,6 +87,18 @@ strut_sink   = 6;        // how far the tilt pivot sits below the base's
                           // wedge solid and gap-free regardless of
                           // tilt_angle, same reasoning as support_wedge()
 
+// The front wedge only holds up the frame's BOTTOM edge - tilted back,
+// the frame's TOP leans further back and higher than that, cantilevered
+// on the frame's own rigidity alone with nothing underneath it. It holds
+// (one piece, confirmed by rendering), but looks and feels like it's
+// hanging in mid-air. back_wall() below closes the triangle: a second,
+// shorter wedge from the base's back edge up to the frame's top, so the
+// frame is braced at both ends instead of propped from the front alone.
+back_wall_t  = 8;        // depth of the back wall's foot (front-to-back)
+back_wall_foot_back_y = base_d;    // flush with the base's own back edge,
+                                    // same reasoning as strut_foot_y
+back_wall_foot_front_y = back_wall_foot_back_y - back_wall_t;
+
 $fn = 48;
 
 // strut_len (how far the wedge rises, pre-tilt, before the frame starts)
@@ -123,10 +135,14 @@ function rect_point_dist(xmin, xmax, ymin, ymax, px, py) =
 magnet_xs = [-(base_w/2 - magnet_inset), (base_w/2 - magnet_inset)];
 magnet_ys = [magnet_inset, base_d - magnet_inset];
 for (mx = magnet_xs)
-    for (my = magnet_ys)
+    for (my = magnet_ys) {
         assert(rect_point_dist(-strut_w/2, strut_w/2, wedge_foot_front_y, wedge_foot_back_y, mx, my)
                    > magnet_hole_d/2 + min_pocket_wall,
             "wedge foot comes too close to a magnet pocket - widen base_w, narrow strut_w, or move the pocket (magnet_inset)");
+        assert(rect_point_dist(-strut_w/2, strut_w/2, back_wall_foot_front_y, back_wall_foot_back_y, mx, my)
+                   > magnet_hole_d/2 + min_pocket_wall,
+            "back wall foot comes too close to a magnet pocket - widen base_w, narrow strut_w, or move the pocket (magnet_inset)");
+    }
 
 module board_cradle_right() {
     // Built directly in final mounted orientation (pre-tilt): x =
@@ -193,6 +209,27 @@ module support_wedge() {
     }
 }
 
+module back_wall() {
+    hull() {
+        // foot, flat on the base, flush with its back edge
+        translate([-strut_w/2, back_wall_foot_front_y, 0])
+            cube([strut_w, back_wall_t, 1]);
+        // up to the frame's own TOP edge - same proxy shape and the same
+        // tilt transform as support_wedge(), just reaching frame_h higher
+        // before rotating, so this hull's target coincides with the
+        // frame's top instead of its bottom. The proxy itself is a 1mm
+        // slice, offset back by that 1mm here so it lands just inside the
+        // frame's top face rather than 1mm above it (support_wedge()
+        // overshoots upward into the frame the same way - there the
+        // extra mm is harmless since it only adds overlap, but up here
+        // it would needlessly add height past the frame's own top).
+        translate([0, strut_foot_y, base_t - strut_sink])
+            rotate([-(90 - tilt_angle), 0, 0])
+                translate([0, 0, strut_len + frame_h - 1])
+                    frame_bottom_proxy();
+    }
+}
+
 module magnet_pockets() {
     xs = [-(base_w/2 - magnet_inset), (base_w/2 - magnet_inset)];
     ys = [magnet_inset, base_d - magnet_inset];
@@ -213,6 +250,7 @@ module base() {
 module stand() {
     base();
     support_wedge();
+    back_wall();
 
     // Tilt the frame backward about a point buried strut_sink deep in the
     // base - guarantees a solid, gap-free join with the wedge regardless
