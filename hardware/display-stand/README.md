@@ -24,14 +24,23 @@ adhesive on the machine.
   add supports under the wedge, it doesn't need them; turning them off is
   safe.)
 
-The wedge's slope starts right at the base's own front edge rather than
-partway in, so there's no flat, unsupported stretch behind it either - and
+The wedge spans the full width of the frame's bottom rail (no overhang on
+either side) and its slope starts right at the base's own front edge
+rather than partway in, so the connection between frame and base is solid
+and continuous everywhere, with nothing left unsupported behind it.
 `strut_len` (how far it rises before the frame begins) is computed, not
 hand-picked, as the shortest rise that still keeps the frame's lowest
 corner from dipping below the base. Combined with a base sized to just
 clear the magnets and the tilted frame's own footprint, this keeps the
 model's overall height and footprint - and so its print time - as small as
 the design allows.
+
+If you only look at `preview.png` or OpenSCAD's own live preview, the
+wedge can be easy to miss or look disconnected - OpenSCAD's fast preview
+mode often renders a `hull()` shape (what the wedge is built from)
+washed-out or near-invisible. Press F6 (or pass `--render` on the command
+line, as `preview.png` is) for the real, fully-computed geometry before
+judging whether something looks off.
 
 ## How it holds the case
 
@@ -72,9 +81,8 @@ openscad --render -o display_stand.stl display_stand.scad
 
 A few `assert()`s near the top check that the magnet pockets don't overlap
 the wedge's foot if you change the base size, wedge position, or magnet
-spacing, and that the wedge stays close enough to the frame's own width to
-avoid an unsupported overhang on the rail - they'll fail loudly with an
-explanation rather than silently producing a broken or unprintable part.
+spacing - they'll fail loudly with an explanation rather than silently
+producing a broken or unprintable part.
 
 ## Printing & assembly
 

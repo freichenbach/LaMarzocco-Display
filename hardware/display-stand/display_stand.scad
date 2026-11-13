@@ -30,6 +30,11 @@ frame_margin    = 4;     // solid rail/cap material around the case
 frame_depth     = case_t + slot_clearance + 2;  // channel depth (front-to-back)
 lip_depth       = 2;     // thickness of the narrower front-lip section
 
+frame_h   = case_h + 2 * frame_margin;
+frame_len = case_l + frame_margin;        // + frame_margin = the closed cap;
+                                           // the open end needs no extra
+                                           // margin, it's open
+
 // ---------- Magnets ----------
 magnet_d      = 5.0;
 magnet_h      = 8.47;
@@ -45,11 +50,9 @@ base_t        = magnet_hole_h + magnet_floor;   // 10.7 mm
 magnet_inset  = 7;       // pocket center distance from each base edge
 
 // ---------- Base & stand ----------
-base_w       = 78;       // just wide enough for the magnets to clear the
-                          // wedge in X, plus a small margin (see the
-                          // assert below) - also comfortably wider than
-                          // frame_len, so the rail has no unsupported
-                          // reach past the base's own edge either
+base_w       = 84;       // just wide enough for the magnets to clear the
+                          // now full-width wedge in X, plus a small
+                          // margin (see the assert below)
 base_d       = 37;       // just deep enough that the tilted frame's own
                           // back corner (see support_wedge()) still lands
                           // on the base, so nothing overhangs past its
@@ -63,13 +66,16 @@ strut_len_margin = 0.5;  // mm of slack kept above the computed minimum,
 // narrow post (or a thin wall, tried and printed twice, both times
 // separating partway up - too little bonding area to resist the printer's
 // own vibration) would leave both ends of the rail cantilevered in mid-air
-// (~19 mm unsupported on each side at frame_len=62, strut_w=24 - well past
-// what FDM bridges reliably). strut_w spans almost the full frame width,
-// and support_wedge() below fills in a solid ramp underneath instead of a
-// panel, so there's no overhang anywhere to sag, snap loose, or need
+// (a first wedge version left 4 mm unsupported on each side at
+// frame_len=62, strut_w=54 - fine structurally, but easy to miss as a
+// support at all when just glancing at the model). strut_w now matches
+// frame_len exactly, so the wedge meets the rail's full width with zero
+// overhang anywhere - visibly one continuous connection from base to
+// frame, and support_wedge() below fills in a solid ramp underneath
+// instead of a panel, so there's nothing to sag, snap loose, or need
 // print supports for.
-strut_w      = 54;       // width of the wedge (leaves 4 mm clear on each
-                          // side of the frame, see the assert below)
+strut_w      = frame_len; // width of the wedge - the frame's bottom rail,
+                          // full width, no overhang on either side
 strut_t      = 8;        // depth of the wedge's foot, where it meets the
                           // base (front-to-back)
 strut_foot_y = strut_t/2; // the foot's own front face flush with the
@@ -83,11 +89,6 @@ strut_sink   = 6;        // how far the tilt pivot sits below the base's
 
 $fn = 48;
 
-frame_h   = case_h + 2 * frame_margin;
-frame_len = case_l + frame_margin;        // + frame_margin = the closed cap;
-                                           // the open end needs no extra
-                                           // margin, it's open
-
 // strut_len (how far the wedge rises, pre-tilt, before the frame starts)
 // is computed rather than hand-tuned: it's the smallest value that still
 // keeps the frame's own lowest corner (the back-bottom edge of its depth
@@ -100,20 +101,12 @@ tilt_theta = -(90 - tilt_angle);
 strut_len_min = (strut_sink - base_t - frame_depth * sin(tilt_theta)) / cos(tilt_theta);
 strut_len = strut_len_min + strut_len_margin;
 
-// Sanity checks (visible in the console on every render): the wedge must
-// reach close enough to the frame's own width to avoid a long unsupported
-// overhang on the rail (print-only concern - OpenSCAD can't tell you a
-// shape is hard to print, so this just catches a config that reintroduces
-// the original mistake), and the magnet pockets must clear the wedge's
-// foot - checked as an actual rectangle-to-circle distance, not separate
-// X/Y checks, since the foot now starts flush with the front edge and
-// sits close to the front magnet row in Y, kept clear only because it is
-// narrower than the magnets' X spacing.
-max_rail_overhang = 8;   // mm of unsupported rail on each side considered
-                          // safe to print without support
-assert(frame_len/2 - strut_w/2 <= max_rail_overhang,
-    "strut_w too narrow for frame_len - the bottom rail would overhang more than max_rail_overhang unsupported on each side");
-
+// Sanity checks (visible in the console on every render): the magnet
+// pockets must clear the wedge's foot - checked as an actual
+// rectangle-to-circle distance, not separate X/Y checks, since the foot
+// now starts flush with the front edge and sits close to the front
+// magnet row in Y, kept clear only because it is narrower than the
+// magnets' X spacing.
 assert(tilt_angle > 0 && tilt_angle < 90,
     "tilt_angle must be between 0 and 90 (degrees from horizontal) - the strut_len formula above assumes that range");
 
