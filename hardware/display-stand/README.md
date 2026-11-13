@@ -15,9 +15,14 @@ adhesive on the machine.
   case weigh). A different magnet size works too - edit `magnet_d` and
   `magnet_h` in `display_stand.scad` and re-render.
 - A 3D printer, PLA or PETG. Print it as exported (base down, matching how
-  it's used) - no supports needed: the 60° tilt is gentle enough for an
-  unsupported lean, and the wide support wall under the frame (not a
-  narrow post) means the rail has no unsupported overhang either.
+  it's used) - no supports needed. The frame sits on a solid wedge, not a
+  thin wall: its cross-section only ever grows as it's printed up from the
+  base, so there's no overhang at any height for supports to catch. (An
+  earlier version of this design used a thin tilted panel instead - it
+  printed, with supports, as a mess of detached, drifted plastic twice in a
+  row before being replaced with the wedge. If your slicer still wants to
+  add supports under the wedge, it doesn't need them; turning them off is
+  safe.)
 
 ## How it holds the case
 
@@ -57,8 +62,8 @@ openscad --render -o display_stand.stl display_stand.scad
 ```
 
 A few `assert()`s near the top check that the magnet pockets don't overlap
-the support wall if you change the base size, wall position, or magnet
-spacing, and that the wall stays close enough to the frame's own width to
+the wedge's foot if you change the base size, wedge position, or magnet
+spacing, and that the wedge stays close enough to the frame's own width to
 avoid an unsupported overhang on the rail - they'll fail loudly with an
 explanation rather than silently producing a broken or unprintable part.
 

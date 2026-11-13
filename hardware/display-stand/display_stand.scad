@@ -50,22 +50,27 @@ base_w       = 80;       // wide enough for the now-horizontal frame, with
                           // assert below)
 base_d       = 50;
 tilt_angle   = 60;       // degrees from horizontal - adjust to taste
-strut_len    = 30;       // length of the angled support, base to cradle
-// The strut holds up the frame's bottom rail, which runs horizontally -
-// unlike the portrait version, post and rail are NOT inline here, so a
-// narrow central post would leave both ends of the rail cantilevered in
-// mid-air (~19 mm unsupported on each side at frame_len=62, strut_w=24 -
-// well past what FDM bridges without sagging or needing support). Instead
-// strut_w spans almost the full frame width, turning the "post" into a
-// wide, thin, continuously-supported wall instead of a point support.
-strut_w      = 54;       // width of the support wall (leaves 4 mm clear on
-                          // each side of the frame, see the assert below)
-strut_t      = 8;        // its thickness (front-to-back)
-strut_foot_y = 20;       // where the strut leaves the base, measured from
-                          // the front edge (y=0)
+strut_len    = 30;       // height of the wedge, base to the frame's bottom
+// The wedge holds up the frame's bottom rail, which runs horizontally -
+// unlike a portrait layout, support and rail are NOT inline here, so a
+// narrow post (or a thin wall, tried and printed twice, both times
+// separating partway up - too little bonding area to resist the printer's
+// own vibration) would leave both ends of the rail cantilevered in mid-air
+// (~19 mm unsupported on each side at frame_len=62, strut_w=24 - well past
+// what FDM bridges reliably). strut_w spans almost the full frame width,
+// and support_wedge() below fills in a solid ramp underneath instead of a
+// panel, so there's no overhang anywhere to sag, snap loose, or need
+// print supports for.
+strut_w      = 54;       // width of the wedge (leaves 4 mm clear on each
+                          // side of the frame, see the assert below)
+strut_t      = 8;        // depth of the wedge's foot, where it meets the
+                          // base (front-to-back)
+strut_foot_y = 20;       // where the wedge's foot sits on the base,
+                          // measured from the front edge (y=0)
 strut_sink   = 6;        // how far the tilt pivot sits below the base's
-                          // top face - see the matching comment in the
-                          // portrait version this was adapted from
+                          // top face - keeps the frame's own join to the
+                          // wedge solid and gap-free regardless of
+                          // tilt_angle, same reasoning as support_wedge()
 
 $fn = 48;
 
@@ -74,25 +79,25 @@ frame_len = case_l + frame_margin;        // + frame_margin = the closed cap;
                                            // the open end needs no extra
                                            // margin, it's open
 
-// Sanity checks (visible in the console on every render): the strut must
+// Sanity checks (visible in the console on every render): the wedge must
 // reach close enough to the frame's own width to avoid a long unsupported
 // overhang on the rail (print-only concern - OpenSCAD can't tell you a
 // shape is hard to print, so this just catches a config that reintroduces
-// the original mistake), and the magnet pockets must clear the strut in
-// both X and Y.
+// the original mistake), and the magnet pockets must clear the wedge's
+// foot in both X and Y.
 max_rail_overhang = 8;   // mm of unsupported rail on each side considered
                           // safe to print without support
 assert(frame_len/2 - strut_w/2 <= max_rail_overhang,
     "strut_w too narrow for frame_len - the bottom rail would overhang more than max_rail_overhang unsupported on each side");
 
-pedestal_front_y = strut_foot_y - strut_t/2;
-pedestal_back_y  = strut_foot_y + strut_t/2;
-assert(pedestal_front_y > magnet_inset + magnet_hole_d/2,
-    "strut overlaps the front magnet row in Y - move strut_foot_y back or shrink strut_t");
-assert(pedestal_back_y < base_d - magnet_inset - magnet_hole_d/2,
-    "strut overlaps the back magnet row in Y - move strut_foot_y forward or shrink strut_t");
+wedge_foot_front_y = strut_foot_y - strut_t/2;
+wedge_foot_back_y  = strut_foot_y + strut_t/2;
+assert(wedge_foot_front_y > magnet_inset + magnet_hole_d/2,
+    "wedge foot overlaps the front magnet row in Y - move strut_foot_y back or shrink strut_t");
+assert(wedge_foot_back_y < base_d - magnet_inset - magnet_hole_d/2,
+    "wedge foot overlaps the back magnet row in Y - move strut_foot_y forward or shrink strut_t");
 assert(base_w/2 - magnet_inset - magnet_hole_d/2 > strut_w/2,
-    "strut overlaps a magnet pocket in X - widen base_w, shrink strut_w, or increase magnet_inset");
+    "wedge foot overlaps a magnet pocket in X - widen base_w, shrink strut_w, or increase magnet_inset");
 
 module board_cradle_right() {
     // Built directly in final mounted orientation (pre-tilt): x =
@@ -125,19 +130,37 @@ module board_cradle() {
         mirror([1, 0, 0]) board_cradle_right();
 }
 
-module strut() {
-    // single centered pedestal, local +z, foot at z=0
-    translate([-strut_w/2, -strut_t/2, 0])
-        cube([strut_w, strut_t, strut_len]);
+// A thin, tall, tilted, unsupported wall (the original design here) turned
+// out to be too weak to print reliably even with slicer supports - it
+// doesn't have enough bonding area low down to resist the printer's own
+// vibration, and once it flexes even a little the layers above drift
+// further and further (two failed prints, both separating partway up).
+//
+// A solid wedge replaces it: one continuous ramp of material from the
+// base up to the frame, with no overhang at any height, since its own
+// cross-section only ever grows as it's built up - there's nothing to
+// sag, snap loose, or need print supports for, and it is mechanically
+// far stronger than a thin panel ever was.
+module frame_bottom_proxy() {
+    // A thin slice standing in for the frame's own bottom-rail footprint,
+    // used only to tell hull() where the wedge needs to reach - not part
+    // of the visible model (board_cradle() provides the real geometry).
+    translate([-strut_w/2, 0, 0])
+        cube([strut_w, frame_depth, 1]);
 }
 
-module upper_assembly() {
-    union() {
-        strut();
-        // cradle's bottom rail (local z=-frame_h/2) lands on the
-        // pedestal's top (z=strut_len)
-        translate([0, 0, strut_len + frame_h/2])
-            board_cradle();
+module support_wedge() {
+    hull() {
+        // foot, flat on the base
+        translate([-strut_w/2, strut_foot_y - strut_t/2, 0])
+            cube([strut_w, strut_t, 1]);
+        // up to the frame's own bottom edge, through the same tilt used
+        // to place the frame itself (see stand() below) - kept identical
+        // on purpose, so the wedge's top and the frame's bottom coincide
+        translate([0, strut_foot_y, base_t - strut_sink])
+            rotate([-(90 - tilt_angle), 0, 0])
+                translate([0, 0, strut_len])
+                    frame_bottom_proxy();
     }
 }
 
@@ -160,15 +183,16 @@ module base() {
 
 module stand() {
     base();
+    support_wedge();
 
-    // Tilt the whole upper assembly backward about a point buried
-    // strut_sink deep in the base - guarantees a solid, gap-free join
-    // regardless of tilt_angle (the pedestal foot is no longer a flat,
-    // level face once rotated, so it has to overlap solid base material
-    // rather than sit exactly on top of it).
+    // Tilt the frame backward about a point buried strut_sink deep in the
+    // base - guarantees a solid, gap-free join with the wedge regardless
+    // of tilt_angle (same reasoning as support_wedge()'s own hull target:
+    // the frame's bottom is no longer a flat, level face once rotated).
     translate([0, strut_foot_y, base_t - strut_sink])
         rotate([-(90 - tilt_angle), 0, 0])
-            upper_assembly();
+            translate([0, 0, strut_len + frame_h/2])
+                board_cradle();
 }
 
 stand();
