@@ -75,27 +75,6 @@ unsupported) and was reverted; it's listed here rather than hidden so
 you can judge for yourself or paint supports over just that spot if you'd
 rather not rely on the bridge.
 
-**Open end still needed slicer supports in practice**, even though the
-model itself has no real overhang there - the open end (no solid cap to
-help brace it, unlike the closed end) apparently flexes enough under
-print vibration for the slicer to want to prop it up over the whole
-height between where the front wedge and back wall reach. `corner_brace()`
-adds a dedicated, narrow (1 cm) extra connection from the base at that
-one corner instead of relying on supports: a low part repeating
-support_wedge()'s own safe attachment to the frame's bottom, and a high
-part built exactly like back_wall() (narrow back-edge attachment,
-computed self-supporting foot) but reaching only partway up
-(`corner_brace_h`) rather than all the way to the top. It can't reach any
-higher from a front-anchored foot without cutting across the case (the
-case's own back edge rises in Y faster than a front-anchored hull ever
-can, checked the same way as back_wall()'s own clearance) - and it can't
-be back-anchored like back_wall() over this whole height either, since a
-back-edge attachment is only ever exactly flush with the case's own back
-surface at its own target height (by construction, matching
-`back_wall_attach_w` to the slack in `frame_depth`) - going any higher
-than `corner_brace_h` would just move that already-zero margin to a
-taller point, not create one.
-
 ## How it holds the case
 
 The case (58 x 35 x 10 mm, measured by hand - the height was corrected
