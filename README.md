@@ -28,6 +28,13 @@ This project is designed for the [LilyGo T-Display S3 AMOLED](https://lilygo.cc/
 - WiFi connectivity
 - USB-C interface
 
+### 3D-Printable Stand
+
+[`hardware/display-stand/`](hardware/display-stand/) has a parametric
+OpenSCAD design for a magnetic stand that tilts the display for reading and
+sticks to the machine's steel body - no screws into the board, no mounting
+holes needed.
+
 ## Getting Started
 
 ### Prerequisites
