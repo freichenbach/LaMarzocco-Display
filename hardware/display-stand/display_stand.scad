@@ -92,12 +92,11 @@ strut_sink   = 6;        // how far the tilt pivot sits below the base's
 // on the frame's own rigidity alone with nothing underneath it. It holds
 // (one piece, confirmed by rendering), but looks and feels like it's
 // hanging in mid-air. back_wall() below closes the triangle: a second,
-// shorter wedge from the base's back edge up to the frame's top, so the
-// frame is braced at both ends instead of propped from the front alone.
-back_wall_t  = 8;        // depth of the back wall's foot (front-to-back)
-back_wall_foot_back_y = base_d;    // flush with the base's own back edge,
-                                    // same reasoning as strut_foot_y
-back_wall_foot_front_y = back_wall_foot_back_y - back_wall_t;
+// shorter wedge from the base up to the frame's top, so the frame is
+// braced at both ends instead of propped from the front alone.
+back_wall_t      = 8;    // depth of the back wall's foot (front-to-back)
+back_wall_margin = 0.5;  // mm of backward lean kept past the computed
+                          // minimum, see back_wall_foot_front_y below
 
 $fn = 48;
 
@@ -112,6 +111,19 @@ $fn = 48;
 tilt_theta = -(90 - tilt_angle);
 strut_len_min = (strut_sink - base_t - frame_depth * sin(tilt_theta)) / cos(tilt_theta);
 strut_len = strut_len_min + strut_len_margin;
+
+// back_wall_foot_front_y is computed, not placed by eye: the frame's top
+// (see back_wall() below) is a tilted slice whose OWN front edge (local
+// y=0 on the proxy) ends up at the smallest Y of the two - the back
+// wall's foot must start at or before that Y, or the hull connecting
+// foot to target would have to lean forward as it rises, which is
+// exactly the overhang a slicer flags ("flying support"/no bed contact
+// under part of the model) and needs support material to print. Leaning
+// back instead (foot_front_y a bit further forward still) keeps it
+// self-supporting the same way the front wedge already is.
+target_top_front_y = strut_foot_y - (strut_len + frame_h - 1) * sin(tilt_theta);
+back_wall_foot_front_y = target_top_front_y - back_wall_margin;
+back_wall_foot_back_y  = back_wall_foot_front_y + back_wall_t;
 
 // Sanity checks (visible in the console on every render): the magnet
 // pockets must clear the wedge's foot - checked as an actual

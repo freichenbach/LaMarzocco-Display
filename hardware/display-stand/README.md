@@ -44,11 +44,15 @@ judging whether something looks off.
 
 The front wedge only holds up the frame's bottom edge, though - tilted
 back, the frame's top leans further back and higher still, with nothing
-underneath it but its own rigidity. A second, shorter wedge (`back_wall()`
-in `display_stand.scad`) braces it from the base's back edge up to the
-frame's top, the same way and for the same reason as the front one, so
+underneath it but its own rigidity. A second wedge (`back_wall()` in
+`display_stand.scad`) braces it from the base up to the frame's top, so
 the frame is held at both ends rather than cantilevered from the front
-alone.
+alone. Its foot sits a bit forward of the base's own back edge rather
+than flush with it - computed, not placed by eye, as the position that
+keeps the wall's own front face leaning backward the same way the front
+wedge does, rather than jutting forward as it rises (which is exactly
+the "flying support" / no-bed-contact warning a slicer gives for a part
+of a model it can't print without extra support).
 
 ## How it holds the case
 
