@@ -92,6 +92,40 @@ strut_sink   = 6;        // how far the tilt pivot sits below the base's
                           // wedge solid and gap-free regardless of
                           // tilt_angle, same reasoning as support_wedge()
 
+// Corner brace: slicer-generated supports kept detaching specifically at
+// the OPEN end (no solid cap there to help brace it, unlike the closed
+// end, over the whole height in between where support_wedge() and
+// back_wall() reach). Rather than rely on supports there at all, add a
+// dedicated, narrow, two-part extra connection from the base at that one
+// corner:
+//  - low part: front-anchored, straight to the frame's bottom - the same
+//    attachment support_wedge() already proves safe, just restated here
+//    narrower so the two fuse without a seam. By itself this adds
+//    nothing new (support_wedge() already covers it); it exists so the
+//    high part below isn't floating on its own.
+//  - high part: reaches further up the open rail than support_wedge()
+//    does, to z_local=corner_brace_h - but NOT by continuing the same
+//    front-anchored line. The case's own back edge (frame_depth, used by
+//    back_wall()'s self-supporting math) rises faster with height than a
+//    front foot's hull ever could, so any front-anchored hull reaching
+//    this high would already be cutting across the case by z_local=4
+//    (checked by computing both lines directly, the same way
+//    back_wall()'s clearance was verified) - continuing upward from the
+//    front isn't an option at all, not just a worse one. So the high
+//    part gets its OWN back-anchored foot and narrow back-edge target,
+//    using the exact same self-supporting construction as back_wall(),
+//    just localized to this corner's width and reaching a lower height.
+corner_brace_w = 10;    // 1cm wide
+open_end_x = cable_exit_right ? frame_len/2 : -frame_len/2;
+corner_brace_x_min = cable_exit_right ? open_end_x - corner_brace_w : open_end_x;
+corner_brace_x_max = corner_brace_x_min + corner_brace_w;
+corner_brace_h = 28;    // how far up the open rail the high part reaches -
+                          // deliberately a bit short of where the case's
+                          // own back surface and this attachment's front
+                          // edge become exactly flush (by construction,
+                          // same margin-less limit back_wall() already
+                          // reaches at its own, much higher, target)
+
 // The front wedge only holds up the frame's BOTTOM edge - tilted back,
 // the frame's TOP leans further back and higher than that, cantilevered
 // on the frame's own rigidity alone with nothing underneath it. It holds
@@ -143,6 +177,13 @@ target_top_front_y = strut_foot_y + (frame_depth - back_wall_attach_w) * cos(til
 back_wall_foot_front_y = target_top_front_y - back_wall_margin;
 back_wall_foot_back_y  = back_wall_foot_front_y + back_wall_t;
 
+// corner_brace()'s high part uses the identical construction, just to a
+// lower height (strut_len+corner_brace_h instead of strut_len+frame_h-1,
+// matching the translate() in corner_brace() itself).
+corner_brace_target_front_y = strut_foot_y + (frame_depth - back_wall_attach_w) * cos(tilt_theta)
+                                   - (strut_len + corner_brace_h) * sin(tilt_theta);
+corner_brace_foot_front_y = corner_brace_target_front_y - back_wall_margin;
+
 // Sanity checks (visible in the console on every render): the magnet
 // pockets must clear the wedge's foot - checked as an actual
 // rectangle-to-circle distance, not separate X/Y checks, since the foot
@@ -172,6 +213,9 @@ for (mx = magnet_xs)
         assert(rect_point_dist(wedge_x_min, wedge_x_max, back_wall_foot_front_y, back_wall_foot_back_y, mx, my)
                    > magnet_hole_d/2 + min_pocket_wall,
             "back wall foot comes too close to a magnet pocket - widen base_w, narrow wedge_w, or move the pocket (magnet_inset)");
+        assert(rect_point_dist(corner_brace_x_min, corner_brace_x_max, corner_brace_foot_front_y, corner_brace_foot_front_y + back_wall_t, mx, my)
+                   > magnet_hole_d/2 + min_pocket_wall,
+            "corner brace foot comes too close to a magnet pocket - move corner_brace_h or magnet_inset");
     }
 
 module board_cradle_right() {
@@ -282,6 +326,31 @@ module back_wall() {
     }
 }
 
+module corner_brace() {
+    // low part: front-anchored, to the frame's bottom (see the comment
+    // above corner_brace_w for why this can't just continue upward)
+    hull() {
+        translate([corner_brace_x_min, 0, 0])
+            cube([corner_brace_w, strut_t, 1]);
+        translate([0, strut_foot_y, base_t - strut_sink])
+            rotate([-(90 - tilt_angle), 0, 0])
+                translate([0, 0, strut_len])
+                    translate([corner_brace_x_min, 0, 0])
+                        cube([corner_brace_w, frame_depth, 1]);
+    }
+    // high part: back-anchored, same construction as back_wall(), to
+    // z_local=corner_brace_h instead of the frame's very top
+    hull() {
+        translate([corner_brace_x_min, corner_brace_foot_front_y, 0])
+            cube([corner_brace_w, back_wall_t, 1]);
+        translate([0, strut_foot_y, base_t - strut_sink])
+            rotate([-(90 - tilt_angle), 0, 0])
+                translate([0, 0, strut_len + corner_brace_h])
+                    translate([corner_brace_x_min, frame_depth - back_wall_attach_w, 0])
+                        cube([corner_brace_w, back_wall_attach_w, 1]);
+    }
+}
+
 module magnet_pockets() {
     xs = [-(base_w/2 - magnet_inset), (base_w/2 - magnet_inset)];
     ys = [magnet_inset, base_d - magnet_inset];
@@ -303,6 +372,7 @@ module stand() {
     base();
     support_wedge();
     back_wall();
+    corner_brace();
 
     // Tilt the frame backward about a point buried strut_sink deep in the
     // base - guarantees a solid, gap-free join with the wedge regardless
