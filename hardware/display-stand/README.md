@@ -47,16 +47,22 @@ back, the frame's top leans further back and higher still, with nothing
 underneath it but its own rigidity. A second wedge (`back_wall()` in
 `display_stand.scad`) braces it from the base up to the frame's top, so
 the frame is held at both ends rather than cantilevered from the front
-alone. Its foot sits a bit forward of the base's own back edge rather
-than flush with it - computed, not placed by eye, as the position that
-keeps the wall's own front face leaning backward the same way the front
-wedge does, rather than jutting forward as it rises (which is exactly
-the "flying support" / no-bed-contact warning a slicer gives for a part
-of a model it can't print without extra support).
+alone. Its foot is computed, not placed by eye, from two constraints
+that both come from a real test print: the wall's own front face must
+lean backward the same way the front wedge does, not jut forward as it
+rises (that's the "flying support" / no-bed-contact warning a slicer
+gives for a part it can't print without extra support) - and it must
+only ever touch the frame's own back edge (`back_wall_attach_w`, a
+couple mm, matching the slack already built into `frame_depth` for
+this), never reaching across the open channel where the case itself
+sits, or it blocks the case from seating at all (also found by printing
+it and trying to fit the case in).
 
 ## How it holds the case
 
-The case (58 x 30 x 10 mm, measured by hand) slides in from the right-hand
+The case (58 x 35 x 10 mm, measured by hand - the height was corrected
+from an initial 30 mm that turned out too short for the real case to
+seat) slides in from the right-hand
 short edge - the same edge the USB-C cable exits - into a channel that
 grips it by its two long edges and a closed cap on the left, with a ~1.6 mm
 lip on the front face holding it in. Back and the right end stay open, so
@@ -74,7 +80,7 @@ side.
 
 ## Dimensions and their source
 
-Case outline: 58 x 30 x 10 mm, measured by hand - not from a CAD file, so
+Case outline: 58 x 35 x 10 mm, measured by hand - not from a CAD file, so
 there's no sub-mm precision to rely on. `slot_clearance` (0.4 mm) and
 `retain_lip` (1.6 mm) in `display_stand.scad` give it a bit of room; if
 your case is a little larger or smaller, adjust `case_l`/`case_h`/`case_t`

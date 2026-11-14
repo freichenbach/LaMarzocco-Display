@@ -18,7 +18,9 @@
 
 // ---------- Case (outer envelope, not the bare board) ----------
 case_l = 58;    // length - horizontal when mounted
-case_h = 30;    // height - vertical when mounted (rail-to-rail span)
+case_h = 35;    // height - vertical when mounted (rail-to-rail span) -
+                // corrected from an initial 30mm measurement that was
+                // too short for the real case to seat properly
 case_t = 10;    // thickness (front-to-back)
 
 cable_exit_right = false;  // false swaps the open end to the left
@@ -53,11 +55,11 @@ magnet_inset  = 7;       // pocket center distance from each base edge
 base_w       = 84;       // just wide enough for the magnets to clear the
                           // now full-width wedge in X, plus a small
                           // margin (see the assert below)
-base_d       = 37;       // just deep enough that the tilted frame's own
-                          // back corner (see support_wedge()) still lands
-                          // on the base, so nothing overhangs past its
-                          // back edge - found by rendering and checking
-                          // the model's bounding box, not derived
+base_d       = 43;       // just deep enough that back_wall()'s own foot
+                          // (now the model's back-most feature) still
+                          // lands on the base, so nothing overhangs past
+                          // its back edge - found by rendering and
+                          // checking the model's bounding box, not derived
 tilt_angle   = 60;       // degrees from horizontal - adjust to taste
 strut_len_margin = 0.5;  // mm of slack kept above the computed minimum,
                           // see strut_len below
@@ -97,6 +99,17 @@ strut_sink   = 6;        // how far the tilt pivot sits below the base's
 back_wall_t      = 8;    // depth of the back wall's foot (front-to-back)
 back_wall_margin = 0.5;  // mm of backward lean kept past the computed
                           // minimum, see back_wall_foot_front_y below
+// The case sits INSIDE the frame's own channel, open at the back for the
+// cable - tilted back, that open channel sweeps through increasingly
+// large Y the higher up the frame you look (see target_top_front_y's own
+// comment). A wall built to reach the frame's FRONT edge, like the first
+// version of this fix, cuts straight across that swept space and blocks
+// the case from seating - which is what actually happened on a real
+// print. Attaching only to the frame's own back wall instead - the
+// `+2` of slack already built into frame_depth for exactly this, a
+// couple mm of solid material behind the case - keeps this wedge fully
+// behind the case at every height, never in its way.
+back_wall_attach_w = 2;
 
 $fn = 48;
 
@@ -112,16 +125,18 @@ tilt_theta = -(90 - tilt_angle);
 strut_len_min = (strut_sink - base_t - frame_depth * sin(tilt_theta)) / cos(tilt_theta);
 strut_len = strut_len_min + strut_len_margin;
 
-// back_wall_foot_front_y is computed, not placed by eye: the frame's top
-// (see back_wall() below) is a tilted slice whose OWN front edge (local
-// y=0 on the proxy) ends up at the smallest Y of the two - the back
-// wall's foot must start at or before that Y, or the hull connecting
-// foot to target would have to lean forward as it rises, which is
-// exactly the overhang a slicer flags ("flying support"/no bed contact
-// under part of the model) and needs support material to print. Leaning
-// back instead (foot_front_y a bit further forward still) keeps it
-// self-supporting the same way the front wedge already is.
-target_top_front_y = strut_foot_y - (strut_len + frame_h - 1) * sin(tilt_theta);
+// back_wall_foot_front_y is computed, not placed by eye: target_top_front_y
+// is the Y of the back-wall target's own front edge - local y =
+// (frame_depth - back_wall_attach_w) on the proxy, i.e. the near side of
+// the attachment strip (see back_wall_attach_w above). The foot must
+// start at or before that Y, or the hull connecting foot to target would
+// have to lean forward as it rises, which is exactly the overhang a
+// slicer flags ("flying support"/no bed contact under part of the
+// model) and needs support material to print. Leaning back instead
+// (foot_front_y a bit further forward still) keeps it self-supporting
+// the same way the front wedge already is.
+target_top_front_y = strut_foot_y + (frame_depth - back_wall_attach_w) * cos(tilt_theta)
+                          - (strut_len + frame_h - 1) * sin(tilt_theta);
 back_wall_foot_front_y = target_top_front_y - back_wall_margin;
 back_wall_foot_back_y  = back_wall_foot_front_y + back_wall_t;
 
@@ -206,6 +221,15 @@ module frame_bottom_proxy() {
         cube([strut_w, frame_depth, 1]);
 }
 
+module frame_back_edge_proxy() {
+    // Like frame_bottom_proxy(), but only the back_wall_attach_w strip at
+    // the very back of frame_depth - see back_wall_attach_w's comment for
+    // why back_wall() targets this narrower strip instead of the frame's
+    // full depth.
+    translate([-strut_w/2, frame_depth - back_wall_attach_w, 0])
+        cube([strut_w, back_wall_attach_w, 1]);
+}
+
 module support_wedge() {
     hull() {
         // foot, flat on the base
@@ -226,19 +250,21 @@ module back_wall() {
         // foot, flat on the base, flush with its back edge
         translate([-strut_w/2, back_wall_foot_front_y, 0])
             cube([strut_w, back_wall_t, 1]);
-        // up to the frame's own TOP edge - same proxy shape and the same
-        // tilt transform as support_wedge(), just reaching frame_h higher
-        // before rotating, so this hull's target coincides with the
-        // frame's top instead of its bottom. The proxy itself is a 1mm
-        // slice, offset back by that 1mm here so it lands just inside the
-        // frame's top face rather than 1mm above it (support_wedge()
-        // overshoots upward into the frame the same way - there the
-        // extra mm is harmless since it only adds overlap, but up here
-        // it would needlessly add height past the frame's own top).
+        // up to the back edge of the frame's own TOP - same tilt
+        // transform as support_wedge(), just reaching frame_h higher
+        // before rotating, and using the narrower back-edge proxy (see
+        // back_wall_attach_w) instead of the full-depth one, so this
+        // only ever touches frame material behind the case, never the
+        // case itself. The proxy itself is a 1mm slice, offset back by
+        // that 1mm here so it lands just inside the frame's top face
+        // rather than 1mm above it (support_wedge() overshoots upward
+        // into the frame the same way - there the extra mm is harmless
+        // since it only adds overlap, but up here it would needlessly
+        // add height past the frame's own top).
         translate([0, strut_foot_y, base_t - strut_sink])
             rotate([-(90 - tilt_angle), 0, 0])
                 translate([0, 0, strut_len + frame_h - 1])
-                    frame_bottom_proxy();
+                    frame_back_edge_proxy();
     }
 }
 
