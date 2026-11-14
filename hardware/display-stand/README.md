@@ -58,6 +58,23 @@ this), never reaching across the open channel where the case itself
 sits, or it blocks the case from seating at all (also found by printing
 it and trying to fit the case in).
 
+**Is there any overhang left at all?** The front wedge and back wall are
+both confirmed fully self-supporting (checked by slicing the rendered
+model at many heights and verifying neither one's leading edge ever
+moves forward as it rises). There is one small, separate spot that isn't:
+the retaining lip's own step - solid material only in a narrow band near
+the rails, open channel everywhere else - is an unavoidable local
+overhang once the whole frame tilts back, confirmed by rendering the
+cradle alone, tilted, with no wedge or base at all. It totals under
+~250mm² in a few small patches at the closed-cap end - short spans, not
+a broad flat shelf, well within what FDM printers bridge without support
+and nothing like the tall thin panel this design's own support structure
+replaced earlier. An attempt to "fix" it by narrowing the wedges under
+the closed cap made things worse (it left that end's own bottom edge
+unsupported) and was reverted; it's listed here rather than hidden so
+you can judge for yourself or paint supports over just that spot if you'd
+rather not rely on the bridge.
+
 ## How it holds the case
 
 The case (58 x 35 x 10 mm, measured by hand - the height was corrected

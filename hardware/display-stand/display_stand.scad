@@ -70,14 +70,17 @@ strut_len_margin = 0.5;  // mm of slack kept above the computed minimum,
 // own vibration) would leave both ends of the rail cantilevered in mid-air
 // (a first wedge version left 4 mm unsupported on each side at
 // frame_len=62, strut_w=54 - fine structurally, but easy to miss as a
-// support at all when just glancing at the model). strut_w now matches
-// frame_len exactly, so the wedge meets the rail's full width with zero
-// overhang anywhere - visibly one continuous connection from base to
-// frame, and support_wedge() below fills in a solid ramp underneath
-// instead of a panel, so there's nothing to sag, snap loose, or need
-// print supports for.
-strut_w      = frame_len; // width of the wedge - the frame's bottom rail,
-                          // full width, no overhang on either side
+// support at all when just glancing at the model). The wedges (this one
+// and back_wall()) span the rail's FULL width, including under the
+// closed cap end: that end is solid (no cuts) but still needs support
+// from below like everywhere else - being solid doesn't make it
+// self-supporting on its own, it's still suspended above the base same
+// as the open end is. (An earlier version of this fix narrowed the
+// wedges to stop short of the cap, reasoning the cap didn't need it -
+// wrong: that just left its own bottom edge floating instead.)
+wedge_x_min  = -frame_len/2;
+wedge_x_max  =  frame_len/2;
+wedge_w      = wedge_x_max - wedge_x_min;
 strut_t      = 8;        // depth of the wedge's foot, where it meets the
                           // base (front-to-back)
 strut_foot_y = strut_t/2; // the foot's own front face flush with the
@@ -163,12 +166,12 @@ magnet_xs = [-(base_w/2 - magnet_inset), (base_w/2 - magnet_inset)];
 magnet_ys = [magnet_inset, base_d - magnet_inset];
 for (mx = magnet_xs)
     for (my = magnet_ys) {
-        assert(rect_point_dist(-strut_w/2, strut_w/2, wedge_foot_front_y, wedge_foot_back_y, mx, my)
+        assert(rect_point_dist(wedge_x_min, wedge_x_max, wedge_foot_front_y, wedge_foot_back_y, mx, my)
                    > magnet_hole_d/2 + min_pocket_wall,
-            "wedge foot comes too close to a magnet pocket - widen base_w, narrow strut_w, or move the pocket (magnet_inset)");
-        assert(rect_point_dist(-strut_w/2, strut_w/2, back_wall_foot_front_y, back_wall_foot_back_y, mx, my)
+            "wedge foot comes too close to a magnet pocket - widen base_w, narrow wedge_w, or move the pocket (magnet_inset)");
+        assert(rect_point_dist(wedge_x_min, wedge_x_max, back_wall_foot_front_y, back_wall_foot_back_y, mx, my)
                    > magnet_hole_d/2 + min_pocket_wall,
-            "back wall foot comes too close to a magnet pocket - widen base_w, narrow strut_w, or move the pocket (magnet_inset)");
+            "back wall foot comes too close to a magnet pocket - widen base_w, narrow wedge_w, or move the pocket (magnet_inset)");
     }
 
 module board_cradle_right() {
@@ -177,6 +180,17 @@ module board_cradle_right() {
     // span); y = depth (channel). Centered on x=0 and z=0 so it drops
     // straight onto the strut. mirror()'d at the call site for the other
     // cable side - see cable_exit_right.
+    //
+    // retain_lip's own step (solid down to y=0 only in a band near the
+    // top/bottom rail, open channel everywhere else) is unavoidably a
+    // small local overhang once the whole frame tilts back - confirmed by
+    // rendering this cradle alone, tilted, with no wedge at all, and
+    // checking face angles: it's there regardless of what holds the
+    // frame up. Verified total extent stays under ~250mm^2 in a few small
+    // patches at the closed-cap end, well within what FDM bridges without
+    // support (short spans, not a broad flat shelf) - unlike the tall
+    // thin panel/wall this stand's own support structure replaced earlier,
+    // this isn't the kind of feature that showed up as a real print issue.
     cap_x = -frame_len/2 + frame_margin;   // where the closed cap ends and
                                             // the open channel begins
     difference() {
@@ -217,8 +231,8 @@ module frame_bottom_proxy() {
     // A thin slice standing in for the frame's own bottom-rail footprint,
     // used only to tell hull() where the wedge needs to reach - not part
     // of the visible model (board_cradle() provides the real geometry).
-    translate([-strut_w/2, 0, 0])
-        cube([strut_w, frame_depth, 1]);
+    translate([wedge_x_min, 0, 0])
+        cube([wedge_w, frame_depth, 1]);
 }
 
 module frame_back_edge_proxy() {
@@ -226,15 +240,15 @@ module frame_back_edge_proxy() {
     // the very back of frame_depth - see back_wall_attach_w's comment for
     // why back_wall() targets this narrower strip instead of the frame's
     // full depth.
-    translate([-strut_w/2, frame_depth - back_wall_attach_w, 0])
-        cube([strut_w, back_wall_attach_w, 1]);
+    translate([wedge_x_min, frame_depth - back_wall_attach_w, 0])
+        cube([wedge_w, back_wall_attach_w, 1]);
 }
 
 module support_wedge() {
     hull() {
         // foot, flat on the base
-        translate([-strut_w/2, strut_foot_y - strut_t/2, 0])
-            cube([strut_w, strut_t, 1]);
+        translate([wedge_x_min, strut_foot_y - strut_t/2, 0])
+            cube([wedge_w, strut_t, 1]);
         // up to the frame's own bottom edge, through the same tilt used
         // to place the frame itself (see stand() below) - kept identical
         // on purpose, so the wedge's top and the frame's bottom coincide
@@ -248,8 +262,8 @@ module support_wedge() {
 module back_wall() {
     hull() {
         // foot, flat on the base, flush with its back edge
-        translate([-strut_w/2, back_wall_foot_front_y, 0])
-            cube([strut_w, back_wall_t, 1]);
+        translate([wedge_x_min, back_wall_foot_front_y, 0])
+            cube([wedge_w, back_wall_t, 1]);
         // up to the back edge of the frame's own TOP - same tilt
         // transform as support_wedge(), just reaching frame_h higher
         // before rotating, and using the narrower back-edge proxy (see
